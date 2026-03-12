@@ -151,7 +151,7 @@ const MentionInput = ({ options, onSend, disabled }: MentionInputProps) => {
           onKeyDown={handleKeyDown}
           placeholder="Type a message... Use @ to mention"
           rows={1}
-          className="flex-1 resize-none rounded-2xl border border-border bg-secondary/50 text-foreground placeholder:text-muted-foreground px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 min-h-[48px] max-h-[120px]"
+          className="flex-1 resize-none rounded-2xl border border-border bg-secondary/50 text-foreground placeholder:text-muted-foreground px-5 py-3 text-[16px] sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 min-h-[48px] max-h-[120px]"
           style={{ height: "48px" }}
           onInput={(e) => {
             const el = e.currentTarget;
