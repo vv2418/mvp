@@ -1,0 +1,4 @@
+project_id = "qmecmkhkyhfmsdpxownj"
+
+[functions.matchmaking]
+verify_jwt = false
