@@ -5,8 +5,8 @@
 
 ## Tech Stack
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
-- **Backend:** Lovable Cloud (Supabase) — auth, database, edge functions, realtime
-- **AI:** Lovable AI Gateway (`ai.gateway.lovable.dev`) using `google/gemini-3-flash-preview`
+- **Backend:** Supabase — auth, database, edge functions, realtime
+- **AI:** AI Gateway (configured via env) using `google/gemini-3-flash-preview`
 - **Animations:** Framer Motion
 - **Fonts:** Playfair Display (display) + DM Sans (body)
 

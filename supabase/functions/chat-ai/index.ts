@@ -13,8 +13,11 @@ Deno.serve(async (req) => {
   try {
     const { room_id, event_title, recent_messages, user_id } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const AI_GATEWAY_API_KEY = Deno.env.get("AI_GATEWAY_API_KEY");
+    if (!AI_GATEWAY_API_KEY) throw new Error("AI_GATEWAY_API_KEY not configured");
+
+    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL");
+    if (!AI_GATEWAY_URL) throw new Error("AI_GATEWAY_URL not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -40,11 +43,11 @@ Rules:
 - Make it relevant to the conversation topic and the event "${event_title}"`;
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `${AI_GATEWAY_URL.replace(/\/$/, "")}/v1/chat/completions`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${AI_GATEWAY_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

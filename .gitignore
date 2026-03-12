@@ -71,3 +71,6 @@ coverage/
 .turbo/
 .vercel/
 
+# TypeScript build cache
+*.tsbuildinfo
+
