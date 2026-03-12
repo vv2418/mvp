@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Vite exposes all `VITE_*` env vars to the client bundle.
+# These Supabase values are intentionally public (project URL/id + anon/publishable key),
+# but Netlify's secrets scanner will still flag them unless omitted explicitly.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_PROJECT_ID,VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_URL"
+  SECRETS_SCAN_OMIT_PATHS = "dist/**,supabase/config.toml"
+

@@ -125,7 +125,7 @@ const Feed = () => {
 
   return (
     <AppShell>
-      <div className="relative flex flex-1 flex-col bg-background overflow-hidden">
+      <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-h-0">
         {/* Background decorations */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-40 right-0 h-[600px] w-[600px] rounded-full bg-accent/[0.06] blur-[120px]" />
@@ -148,11 +148,11 @@ const Feed = () => {
         </div>
 
         {/* Card deck area */}
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-3 py-3">
+        <div className="relative z-10 flex flex-1 min-h-0 flex-col items-center justify-center px-3 py-3 pb-24 lg:pb-8">
           {events.length > 0 ? (
             <>
               {/* Card container */}
-              <div className="relative w-full max-w-[520px] aspect-[3/5] sm:aspect-[3/4.5]">
+              <div className="relative w-full max-w-[520px] h-[min(62svh,720px)] sm:h-[min(68svh,760px)]">
                 <AnimatePresence>
                   {events.slice(0, 3).map((event, i) => (
                     <SwipeCard
