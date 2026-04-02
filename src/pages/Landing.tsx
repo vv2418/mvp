@@ -10,10 +10,14 @@ import PricingSection from "@/components/landing/PricingSection";
 import CTASection from "@/components/landing/CTASection";
 import LandingNav from "@/components/landing/LandingNav";
 import LandingFooter from "@/components/landing/LandingFooter";
+import { trackEvent } from "@/lib/analytics";
 
 const Landing = () => {
   const navigate = useNavigate();
-  const go = () => navigate("/signup");
+  const go = () => {
+    trackEvent("onboarding_landing_cta");
+    navigate("/signup");
+  };
 
   return (
     <div className="min-h-screen bg-[hsl(220,20%,8%)] text-white overflow-x-hidden">

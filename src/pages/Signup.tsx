@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, ArrowLeft, Camera, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { trackEvent } from "@/lib/analytics";
 
 type Step = "method" | "phone-input" | "email-input";
 
@@ -47,6 +48,7 @@ const Signup = () => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back!");
+        trackEvent("onboarding_auth_success", { flow: "login", auth_method: "email" });
         navigate("/feed");
       } else {
         if (!name.trim()) { toast.error("Please enter your name"); setLoading(false); return; }
@@ -56,6 +58,7 @@ const Signup = () => {
         });
         if (error) throw error;
         toast.success("Account created! Check your email to verify.");
+        trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "email" });
         navigate("/interests");
       }
     } catch (err: any) {
@@ -81,6 +84,7 @@ const Signup = () => {
       });
       if (error) throw error;
       toast.success("Welcome to Rekindled!");
+      trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "phone" });
       navigate("/interests");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -128,7 +132,10 @@ const Signup = () => {
           {step === "method" && (
             <motion.div key="method" {...fade} className="w-full space-y-3">
               <button
-                onClick={() => setStep("email-input")}
+                onClick={() => {
+                  trackEvent("onboarding_signup_method_selected", { method: "email" });
+                  setStep("email-input");
+                }}
                 className="flex w-full items-center gap-4 rounded-2xl border border-border/50 bg-card/50 p-5 text-left transition-all hover:bg-card hover:border-foreground/10 hover:shadow-card"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
@@ -140,7 +147,10 @@ const Signup = () => {
                 </div>
               </button>
               <button
-                onClick={() => setStep("phone-input")}
+                onClick={() => {
+                  trackEvent("onboarding_signup_method_selected", { method: "phone" });
+                  setStep("phone-input");
+                }}
                 className="flex w-full items-center gap-4 rounded-2xl border border-border/50 bg-card/50 p-5 text-left transition-all hover:bg-card hover:border-foreground/10 hover:shadow-card"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
@@ -153,7 +163,14 @@ const Signup = () => {
               </button>
               <p className="pt-8 text-center text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <button onClick={() => { setIsLogin(true); setStep("email-input"); }} className="font-semibold text-foreground hover:underline underline-offset-4">
+                <button
+                  onClick={() => {
+                    trackEvent("onboarding_signup_method_selected", { method: "email", intent: "login" });
+                    setIsLogin(true);
+                    setStep("email-input");
+                  }}
+                  className="font-semibold text-foreground hover:underline underline-offset-4"
+                >
                   Sign in
                 </button>
               </p>

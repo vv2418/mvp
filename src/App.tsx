@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import SplashScreen from "@/components/SplashScreen";
 import Landing from "./pages/Landing";
@@ -29,6 +30,7 @@ const App = () => {
           <Sonner />
           {showSplash && <SplashScreen onComplete={hideSplash} />}
           <BrowserRouter>
+            <AnalyticsRouteListener />
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/signup" element={<Signup />} />

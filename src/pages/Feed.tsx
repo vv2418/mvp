@@ -4,6 +4,7 @@ import SwipeCard from "@/components/SwipeCard";
 import AppShell from "@/components/AppShell";
 import { MOCK_EVENTS } from "@/data/mockEvents";
 import { supabase } from "@/integrations/supabase/client";
+import { trackEvent } from "@/lib/analytics";
 import { Flame, X, Heart } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +25,10 @@ const TAG_TO_INTEREST: Record<string, string> = {
 };
 
 const Feed = () => {
+  useEffect(() => {
+    trackEvent("onboarding_activation");
+  }, []);
+
   const userInterests: string[] = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("rekindle_interests") || "[]");

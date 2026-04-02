@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { trackEvent } from "@/lib/analytics";
 
 const INTERESTS = [
   { id: "music", label: "Music", emoji: "🎵" },
@@ -53,6 +54,7 @@ const Interests = () => {
       await supabase.from("user_interests").insert(rows);
     }
 
+    trackEvent("onboarding_interests_complete", { interest_count: selected.length });
     navigate("/feed");
   };
 
