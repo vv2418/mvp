@@ -3,13 +3,16 @@ import { AnimatePresence, motion, animate } from "framer-motion";
 import SwipeCard from "@/components/SwipeCard";
 import AppShell from "@/components/AppShell";
 import { MOCK_EVENTS } from "@/data/mockEvents";
+import { fetchTicketmasterEvents } from "@/lib/ticketmaster";
+import { EventData } from "@/components/EventCard";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
-import { Flame, X, Heart } from "lucide-react";
+import { Flame, X, Heart, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 /** Map event tag → interest id for matching */
 const TAG_TO_INTEREST: Record<string, string> = {
+  // Mock event tags
   "Music": "music", "Live": "music",
   "Tech": "tech", "Coding": "tech", "Competition": "tech",
   "Networking": "networking", "Startups": "startups",
@@ -22,6 +25,36 @@ const TAG_TO_INTEREST: Record<string, string> = {
   "Social": "networking",
   "Games": "gaming", "Casual": "gaming",
   "Film": "movies", "Chill": "outdoors",
+  // Ticketmaster segments
+  "Arts & Theatre": "art",
+  "Film, TV & Radio": "movies",
+  "Miscellaneous": "networking",
+  // Ticketmaster genres — Music
+  "Rock": "music", "Pop": "music", "Hip-Hop": "music", "Hip-Hop/Rap": "music",
+  "R&B": "music", "Classical": "music", "Country": "music", "Jazz": "music",
+  "Blues": "music", "Electronic": "music", "Dance/Electronic": "music",
+  "Latin": "music", "Reggae": "music", "Folk": "music", "Alternative": "music",
+  "Metal": "music", "Punk": "music", "Soul": "music", "Gospel": "music",
+  "World": "music", "Opera": "art",
+  // Ticketmaster genres — Sports
+  "Sports": "sports", "Football": "sports", "Basketball": "sports",
+  "Baseball": "sports", "Soccer": "sports", "Hockey": "sports",
+  "Tennis": "sports", "Golf": "sports", "Boxing": "sports",
+  "MMA": "sports", "Wrestling": "sports", "Motorsports/Racing": "sports",
+  "Volleyball": "sports", "Softball": "sports",
+  // Ticketmaster genres — Arts
+  "Theatre": "art", "Musical": "art", "Dance": "dance", "Ballet": "dance",
+  "Broadway": "art", "Circus": "art", "Magic": "art",
+  // Ticketmaster genres — Other
+  "Comedy": "comedy", "Stand-Up": "comedy",
+  "Technology": "tech", "Science": "tech",
+  "Food & Drink": "food", "Beer & Wine": "food",
+  "Outdoor": "outdoors", "Nature": "outdoors", "Adventure": "outdoors",
+  "Family": "networking", "Children's Festival": "food",
+  "Gaming": "gaming", "Esports": "gaming",
+  "Film": "movies", "Screening": "movies",
+  "Fitness": "fitness", "Health": "fitness", "Yoga": "fitness",
+  "Running": "fitness", "Cycling": "fitness",
 };
 
 const Feed = () => {
@@ -37,10 +70,10 @@ const Feed = () => {
     }
   }, []);
 
-  const sortedEvents = useMemo(() => {
-    if (userInterests.length === 0) return MOCK_EVENTS;
+  const sortEvents = useCallback((rawEvents: EventData[]) => {
+    if (userInterests.length === 0) return rawEvents;
     const interestSet = new Set(userInterests);
-    return [...MOCK_EVENTS].sort((a, b) => {
+    return [...rawEvents].sort((a, b) => {
       const scoreA = a.tags.filter((t) => interestSet.has(TAG_TO_INTEREST[t] || t.toLowerCase())).length;
       const scoreB = b.tags.filter((t) => interestSet.has(TAG_TO_INTEREST[t] || t.toLowerCase())).length;
       return scoreB - scoreA;
@@ -48,7 +81,49 @@ const Feed = () => {
   }, [userInterests]);
 
   const [swipeCounts, setSwipeCounts] = useState<Record<string, number>>({});
-  const [events, setEvents] = useState(sortedEvents);
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [needsCity, setNeedsCity] = useState(false);
+  const [cityInput, setCityInput] = useState("");
+  const eventTitlesRef = useRef<Record<string, string>>({});
+
+  const loadEvents = useCallback(async (options: { lat?: number; lng?: number; city?: string } = {}) => {
+    setLoadingEvents(true);
+    try {
+      const tmEvents = await fetchTicketmasterEvents({ ...options, size: 20 });
+      const finalEvents = tmEvents.length > 0 ? tmEvents : MOCK_EVENTS;
+      for (const e of finalEvents) eventTitlesRef.current[e.id] = e.title;
+      setEvents(sortEvents(finalEvents));
+      setNeedsCity(false);
+    } catch {
+      for (const e of MOCK_EVENTS) eventTitlesRef.current[e.id] = e.title;
+      setEvents(sortEvents(MOCK_EVENTS));
+    } finally {
+      setLoadingEvents(false);
+    }
+  }, [sortEvents]);
+
+  // On mount: try geolocation, fall back to city prompt
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        loadEvents({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        // Denied or unavailable — ask for city
+        setNeedsCity(true);
+        setLoadingEvents(false);
+      },
+      { timeout: 6000 }
+    );
+  }, [loadEvents]);
+
+  const handleCitySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const city = cityInput.trim();
+    if (!city) return;
+    loadEvents({ city });
+  };
 
   // Fetch swipe counts AND filter out events user already swiped on
   useEffect(() => {
@@ -106,9 +181,9 @@ const Feed = () => {
           toast.success(`You're interested in "${event.title}" ❤️`);
           setSwipeCounts((prev) => ({ ...prev, [event.id]: (prev[event.id] || 0) + 1 }));
         }
-        // Trigger matchmaking
+        // Trigger matchmaking with all known titles so any new room gets the right name
         supabase.functions.invoke("matchmaking", {
-          body: { event_titles: { [event.id]: event.title } },
+          body: { event_titles: eventTitlesRef.current },
         }).catch(() => {});
       }
 
@@ -146,7 +221,9 @@ const Feed = () => {
               </div>
               <div>
                 <h1 className="font-display text-lg font-bold">Discover</h1>
-                <p className="text-[11px] text-muted-foreground">{events.length} events near you</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {loadingEvents ? "Finding events near you…" : needsCity ? "Enter your city to find events" : `${events.length} events near you`}
+                </p>
               </div>
             </div>
           </div>
@@ -154,7 +231,65 @@ const Feed = () => {
 
         {/* Card deck area */}
         <div className="relative z-10 flex flex-1 min-h-0 flex-col items-center justify-center px-3 py-3 pb-24 lg:pb-8">
-          {events.length > 0 ? (
+          {loadingEvents ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center gap-3 text-muted-foreground"
+            >
+              <div className="h-[min(62svh,720px)] w-full max-w-[520px] rounded-2xl bg-secondary animate-pulse" />
+              <p className="text-sm">Loading events near you…</p>
+            </motion.div>
+          ) : needsCity ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center justify-center text-center px-6 w-full max-w-sm"
+            >
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-accent/10">
+                <MapPin className="h-9 w-9 text-accent" />
+              </div>
+              <h2 className="mb-2 font-display text-2xl font-bold">Where are you?</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
+                Allow location or enter your city to find events near you.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => loadEvents({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                    () => toast.error("Location access denied — enter your city below"),
+                    { timeout: 6000 }
+                  );
+                }}
+                className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-semibold text-foreground transition-all hover:bg-secondary active:scale-95"
+              >
+                <MapPin className="h-4 w-4 text-accent" />
+                Use my location
+              </button>
+              <div className="mb-4 flex w-full items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex-1 border-t border-border" />
+                or
+                <div className="flex-1 border-t border-border" />
+              </div>
+              <form onSubmit={handleCitySubmit} className="flex w-full gap-2">
+                <input
+                  type="text"
+                  value={cityInput}
+                  onChange={(e) => setCityInput(e.target.value)}
+                  placeholder="e.g. New York, Chicago, LA…"
+                  className="flex-1 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-accent/90 active:scale-95"
+                >
+                  Go
+                </button>
+              </form>
+            </motion.div>
+          ) : events.length > 0 ? (
             <>
               {/* Card container */}
               <div className="relative w-full max-w-[520px] h-[min(62svh,720px)] sm:h-[min(68svh,760px)]">

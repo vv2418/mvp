@@ -5,6 +5,38 @@ import { MessageCircle, Search, Sparkles, Users, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+const TM_API_KEY = import.meta.env.VITE_TICKETMASTER_API_KEY;
+
+/** Looks like "Event 1A9ZkoAGkeNQrkt" — a raw TM id was used as the title */
+function isBadTitle(title: string | null, eventId: string): boolean {
+  return !title || title === `Event ${eventId}` || title.startsWith("Event ");
+}
+
+async function resolveTitles(rooms: RoomData[]): Promise<RoomData[]> {
+  const bad = rooms.filter((r) => isBadTitle(r.event_title, r.event_id));
+  if (bad.length === 0) return rooms;
+
+  try {
+    const ids = bad.map((r) => r.event_id).join(",");
+    const res = await fetch(
+      `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_API_KEY}&id=${ids}&size=${bad.length}`
+    );
+    if (!res.ok) return rooms;
+    const json = await res.json();
+    const events: Array<{ id: string; name: string }> = json._embedded?.events ?? [];
+    const nameMap: Record<string, string> = {};
+    for (const e of events) nameMap[e.id] = e.name;
+
+    return rooms.map((r) =>
+      isBadTitle(r.event_title, r.event_id) && nameMap[r.event_id]
+        ? { ...r, event_title: nameMap[r.event_id] }
+        : r
+    );
+  } catch {
+    return rooms;
+  }
+}
+
 interface RoomData {
   id: string;
   event_id: string;
@@ -76,12 +108,11 @@ const Rooms = () => {
           countMap[m.room_id] = (countMap[m.room_id] || 0) + 1;
         }
 
-        setRooms(
-          roomData.map((r) => ({
-            ...r,
-            member_count: countMap[r.id] || 0,
-          }))
-        );
+        const built = roomData.map((r) => ({
+          ...r,
+          member_count: countMap[r.id] || 0,
+        }));
+        setRooms(await resolveTitles(built));
         setLoading(false);
         return;
       }
@@ -111,12 +142,11 @@ const Rooms = () => {
         countMap[m.room_id] = (countMap[m.room_id] || 0) + 1;
       }
 
-      setRooms(
-        roomData.map((r) => ({
-          ...r,
-          member_count: countMap[r.id] || 0,
-        }))
-      );
+      const built = roomData.map((r) => ({
+        ...r,
+        member_count: countMap[r.id] || 0,
+      }));
+      setRooms(await resolveTitles(built));
       setLoading(false);
     };
 
