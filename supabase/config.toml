@@ -2,3 +2,6 @@ project_id = "qmecmkhkyhfmsdpxownj"
 
 [functions.matchmaking]
 verify_jwt = false
+
+[functions.api-metrics]
+verify_jwt = false
