@@ -14,6 +14,7 @@ import Feed from "./pages/Feed";
 import Rooms from "./pages/Rooms";
 import Chat from "./pages/Chat";
 import Profile from "./pages/Profile";
+import EventCalendar from "./pages/EventCalendar";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => {
               <Route path="/signup" element={<Signup />} />
               <Route path="/interests" element={<Interests />} />
               <Route path="/feed" element={<Feed />} />
+              <Route path="/calendar" element={<EventCalendar />} />
               <Route path="/rooms" element={<Rooms />} />
               <Route path="/chat/:roomId" element={<Chat />} />
               <Route path="/profile" element={<Profile />} />

@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Flame, MessageCircle, Search, Bell, Sun, Moon } from "lucide-react";
+import { Flame, MessageCircle, CalendarDays, Search, Bell, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const NAV_ITEMS = [
   { path: "/feed", icon: Flame, label: "Discover" },
+  { path: "/calendar", icon: CalendarDays, label: "Calendar" },
   { path: "/rooms", icon: MessageCircle, label: "Chats" },
 ];
 

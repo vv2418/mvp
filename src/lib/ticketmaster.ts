@@ -99,12 +99,13 @@ export interface FetchEventsOptions {
   city?: string;
   radius?: number; // miles
   size?: number;
+  keyword?: string;
 }
 
 export async function fetchTicketmasterEvents(
   options: FetchEventsOptions = {}
 ): Promise<EventData[]> {
-  const { lat, lng, city, radius = 25, size = 20 } = options;
+  const { lat, lng, city, radius = 25, size = 20, keyword } = options;
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -116,6 +117,10 @@ export async function fetchTicketmasterEvents(
     unit: "miles",
     startDateTime: now,
   });
+
+  if (keyword) {
+    params.set("keyword", keyword);
+  }
 
   if (lat != null && lng != null) {
     params.set("latlong", `${lat},${lng}`);

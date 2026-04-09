@@ -7,7 +7,7 @@ import { fetchTicketmasterEvents } from "@/lib/ticketmaster";
 import { EventData } from "@/components/EventCard";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
-import { Flame, X, Heart, MapPin } from "lucide-react";
+import { Flame, X, Heart, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 
 /** Map event tag → interest id for matching */
@@ -86,22 +86,47 @@ const Feed = () => {
   const [needsCity, setNeedsCity] = useState(false);
   const [cityInput, setCityInput] = useState("");
   const eventTitlesRef = useRef<Record<string, string>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const lastLocationRef = useRef<{ lat?: number; lng?: number; city?: string }>({});
+  const swipedIdsRef = useRef<Set<string>>(new Set());
+
+  // Fetch the current user's already-swiped event IDs into the ref
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: userSwipes } = await supabase
+        .from("swipes")
+        .select("event_id")
+        .eq("user_id", user.id);
+      swipedIdsRef.current = new Set((userSwipes || []).map((s) => s.event_id));
+    })();
+  }, []);
+
+  const filterSwiped = useCallback((evts: EventData[]) => {
+    if (swipedIdsRef.current.size === 0) return evts;
+    return evts.filter((e) => !swipedIdsRef.current.has(e.id));
+  }, []);
 
   const loadEvents = useCallback(async (options: { lat?: number; lng?: number; city?: string } = {}) => {
     setLoadingEvents(true);
+    lastLocationRef.current = { lat: options.lat, lng: options.lng, city: options.city };
     try {
       const tmEvents = await fetchTicketmasterEvents({ ...options, size: 20 });
       const finalEvents = tmEvents.length > 0 ? tmEvents : MOCK_EVENTS;
       for (const e of finalEvents) eventTitlesRef.current[e.id] = e.title;
-      setEvents(sortEvents(finalEvents));
+      setEvents(filterSwiped(sortEvents(finalEvents)));
       setNeedsCity(false);
     } catch {
       for (const e of MOCK_EVENTS) eventTitlesRef.current[e.id] = e.title;
-      setEvents(sortEvents(MOCK_EVENTS));
+      setEvents(filterSwiped(sortEvents(MOCK_EVENTS)));
     } finally {
       setLoadingEvents(false);
     }
-  }, [sortEvents]);
+  }, [sortEvents, filterSwiped]);
 
   // On mount: try geolocation, fall back to city prompt
   useEffect(() => {
@@ -125,9 +150,37 @@ const Feed = () => {
     loadEvents({ city });
   };
 
-  // Fetch swipe counts AND filter out events user already swiped on
+  const handleSearch = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) return;
+    setIsSearching(true);
+    setLoadingEvents(true);
+    try {
+      const loc = lastLocationRef.current;
+      const tmEvents = await fetchTicketmasterEvents({ ...loc, keyword: query, size: 20 });
+      for (const ev of tmEvents) eventTitlesRef.current[ev.id] = ev.title;
+      setEvents(filterSwiped(sortEvents(tmEvents)));
+    } catch {
+      setEvents([]);
+    } finally {
+      setLoadingEvents(false);
+    }
+  }, [searchQuery, sortEvents, filterSwiped]);
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setSearchOpen(false);
+    setIsSearching(false);
+    const loc = lastLocationRef.current;
+    if (loc.lat || loc.city) {
+      loadEvents(loc);
+    }
+  }, [loadEvents]);
+
+  // Fetch global right-swipe counts for attendee badges
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       const { data: allSwipes } = await supabase
         .from("swipes")
         .select("event_id")
@@ -138,19 +191,7 @@ const Feed = () => {
         counts[row.event_id] = (counts[row.event_id] || 0) + 1;
       }
       setSwipeCounts(counts);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userSwipes } = await supabase
-          .from("swipes")
-          .select("event_id")
-          .eq("user_id", user.id);
-
-        const swipedIds = new Set((userSwipes || []).map((s) => s.event_id));
-        setEvents((prev) => prev.filter((e) => !swipedIds.has(e.id)));
-      }
-    };
-    fetchData();
+    })();
   }, []);
 
   const handleSwipe = useCallback(
@@ -174,12 +215,23 @@ const Feed = () => {
         return;
       }
 
+      swipedIdsRef.current.add(event.id);
+
       if (direction === "right") {
         if (error?.code === "23505") {
           toast.info("You already liked this!");
         } else {
           toast.success(`You're interested in "${event.title}" ❤️`);
           setSwipeCounts((prev) => ({ ...prev, [event.id]: (prev[event.id] || 0) + 1 }));
+
+          // Cache liked event for calendar view
+          try {
+            const liked = JSON.parse(localStorage.getItem("rekindle_liked_events") || "[]");
+            if (!liked.some((e: any) => e.id === event.id)) {
+              liked.push({ id: event.id, title: event.title, date: event.date, location: event.location, image: event.image });
+              localStorage.setItem("rekindle_liked_events", JSON.stringify(liked));
+            }
+          } catch { /* ignore storage errors */ }
         }
         // Trigger matchmaking with all known titles so any new room gets the right name
         supabase.functions.invoke("matchmaking", {
@@ -219,13 +271,63 @@ const Feed = () => {
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent/10">
                 <Flame className="h-4 w-4 text-accent" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h1 className="font-display text-lg font-bold">Discover</h1>
                 <p className="text-[11px] text-muted-foreground">
-                  {loadingEvents ? "Finding events near you…" : needsCity ? "Enter your city to find events" : `${events.length} events near you`}
+                  {loadingEvents ? "Finding events near you…" : needsCity ? "Enter your city to find events" : isSearching ? `${events.length} results for "${searchQuery}"` : `${events.length} events near you`}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchOpen((prev) => !prev);
+                  if (!searchOpen) setTimeout(() => searchInputRef.current?.focus(), 100);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-secondary text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground"
+                aria-label="Search events"
+              >
+                <Search className="h-4 w-4" />
+              </button>
             </div>
+            <AnimatePresence>
+              {searchOpen && (
+                <motion.form
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                  onSubmit={handleSearch}
+                >
+                  <div className="flex gap-2 pt-3">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search events by name…"
+                      className="flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    />
+                    {isSearching ? (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground transition-all hover:bg-secondary active:scale-95"
+                      >
+                        Clear
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-white transition-all hover:bg-accent/90 active:scale-95"
+                      >
+                        Search
+                      </button>
+                    )}
+                  </div>
+                </motion.form>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
