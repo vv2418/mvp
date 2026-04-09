@@ -8,6 +8,11 @@
   to = "/.netlify/functions/user-count"
   status = 200
 
+[[redirects]]
+  from = "/api/metrics"
+  to = "/.netlify/functions/api-metrics"
+  status = 200
+
 # Vite exposes all `VITE_*` env vars to the client bundle.
 # These Supabase values are intentionally public (project URL/id + anon/publishable key),
 # but Netlify's secrets scanner will still flag them unless omitted explicitly.

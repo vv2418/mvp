@@ -1,2 +1,2 @@
 // 20260402_api-metrics.md
-https://qmecmkhkyhfmsdpxownj.supabase.co/functions/v1/api-metrics
+https://YOUR-SITE.netlify.app/api/metrics
