@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
 
-type Step = "method" | "phone-input" | "email-input" | "otp-verify";
-type AuthMethod = "email" | "phone";
+type Step = "method" | "phone-input" | "email-input";
 
 const fade = {
   initial: { opacity: 0, x: 20 },
@@ -19,28 +18,16 @@ const fade = {
 
 const inputCls = "h-13 rounded-xl border-border/50 bg-secondary/50 text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/20";
 
-const OTP_LENGTH = 6;
-
 const Signup = () => {
   const [step, setStep] = useState<Step>("method");
-  const [authMethod, setAuthMethod] = useState<AuthMethod>("email");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  // Resend cooldown timer
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [resendCooldown]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,126 +38,62 @@ const Signup = () => {
     }
   };
 
-  // --- OTP input handlers ---
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const next = [...otp];
-    next[index] = value.slice(-1);
-    setOtp(next);
-    if (value && index < OTP_LENGTH - 1) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, OTP_LENGTH);
-    if (!pasted) return;
-    const next = [...otp];
-    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i];
-    setOtp(next);
-    const focusIdx = Math.min(pasted.length, OTP_LENGTH - 1);
-    otpRefs.current[focusIdx]?.focus();
-  };
-
-  const otpCode = otp.join("");
-
-  // --- Email OTP: send code ---
-  const sendEmailOtp = useCallback(async () => {
-    setLoading(true);
-    try {
-      const opts: any = { email };
-      if (!isLogin && name.trim()) {
-        opts.options = { data: { name } };
-      }
-      const { error } = await supabase.auth.signInWithOtp(opts);
-      if (error) throw error;
-      toast.success("Check your email for a verification code");
-      setResendCooldown(30);
-      setOtp(Array(OTP_LENGTH).fill(""));
-      setStep("otp-verify");
-      setTimeout(() => otpRefs.current[0]?.focus(), 200);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send code");
-    } finally {
-      setLoading(false);
-    }
-  }, [email, name, isLogin]);
-
   const handleEmailSubmit = async () => {
     if (!email.trim() || !email.includes("@")) { toast.error("Please enter a valid email"); return; }
-    if (!isLogin && !name.trim()) { toast.error("Please enter your name"); return; }
-    setAuthMethod("email");
-    await sendEmailOtp();
-  };
-
-  // --- Phone flow: go to OTP screen (demo) ---
-  const handlePhoneContinue = () => {
-    if (!name.trim()) { toast.error("Please enter your name"); return; }
-    if (phone.trim().length < 7) { toast.error("Please enter a valid phone number"); return; }
-    setAuthMethod("phone");
-    setOtp(Array(OTP_LENGTH).fill(""));
-    toast.success("Enter any 6-digit code to continue (demo)");
-    setStep("otp-verify");
-    setTimeout(() => otpRefs.current[0]?.focus(), 200);
-  };
-
-  // --- Verify OTP ---
-  const handleVerifyOtp = async () => {
-    if (otpCode.length !== OTP_LENGTH) { toast.error("Please enter the full 6-digit code"); return; }
+    if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
     setLoading(true);
     try {
-      if (authMethod === "email") {
-        const { error } = await supabase.auth.verifyOtp({ email, token: otpCode, type: "email" });
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        toast.success(isLogin ? "Welcome back!" : "Account verified!");
-        trackEvent("onboarding_auth_success", { flow: isLogin ? "login" : "signup", auth_method: "email" });
-        navigate(isLogin ? "/feed" : "/interests");
+        toast.success("Welcome back!");
+        trackEvent("onboarding_auth_success", { flow: "login", auth_method: "email" });
+        navigate("/feed");
       } else {
-        // Phone demo: accept any 6-digit code
-        const fakeEmail = `${phone.replace(/\D/g, "")}@phone.rekindled.app`;
-        const tempPassword = `phone_${phone.replace(/\D/g, "")}_${Date.now()}`;
+        if (!name.trim()) { toast.error("Please enter your name"); setLoading(false); return; }
         const { error } = await supabase.auth.signUp({
-          email: fakeEmail,
-          password: tempPassword,
-          options: { data: { name, phone } },
+          email,
+          password,
+          options: {
+            data: { name },
+            emailRedirectTo: `${window.location.origin}/feed`,
+          },
         });
         if (error) throw error;
-        toast.success("Welcome to Rekindled!");
-        trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "phone" });
+        toast.success("Account created!");
+        trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "email" });
         navigate("/interests");
       }
     } catch (err: any) {
-      toast.error(err.message || "Verification failed");
-    } finally {
-      setLoading(false);
-    }
+      toast.error(err.message || "Something went wrong");
+    } finally { setLoading(false); }
   };
 
-  // --- Resend ---
-  const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    if (authMethod === "email") {
-      await sendEmailOtp();
-    } else {
-      toast.success("Enter any 6-digit code to continue (demo)");
-      setResendCooldown(30);
-    }
+  const handlePhoneContinue = async () => {
+    if (!name.trim()) { toast.error("Please enter your name"); return; }
+    if (phone.trim().length < 7) { toast.error("Please enter a valid phone number"); return; }
+    const fakeEmail = `${phone.replace(/\D/g, "")}@phone.rekindled.app`;
+    const tempPassword = `phone_${phone.replace(/\D/g, "")}_${Date.now()}`;
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: fakeEmail,
+        password: tempPassword,
+        options: { data: { name, phone } },
+      });
+      if (error) throw error;
+      toast.success("Welcome to Rekindled!");
+      trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "phone" });
+      navigate("/interests");
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong");
+    } finally { setLoading(false); }
   };
 
   const subtitle: Record<Step, string> = {
     method: isLogin ? "Welcome back" : "Let's get you started",
-    "email-input": isLogin ? "Sign in with a magic code" : "Create your account",
+    "email-input": isLogin ? "Sign in to your account" : "Create your account",
     "phone-input": "Enter your phone number",
-    "otp-verify": authMethod === "email"
-      ? `Enter the code sent to ${email}`
-      : `Enter any 6-digit code (demo)`,
   };
 
   const avatarPicker = (
@@ -205,7 +128,6 @@ const Signup = () => {
         <p className="mb-12 text-center text-sm text-muted-foreground">{subtitle[step]}</p>
 
         <AnimatePresence mode="wait">
-          {/* Step 1: Method selection */}
           {step === "method" && (
             <motion.div key="method" {...fade} className="w-full space-y-3">
               <button
@@ -220,7 +142,7 @@ const Signup = () => {
                 </div>
                 <div>
                   <p className="font-semibold text-foreground">Continue with Email</p>
-                  <p className="text-xs text-muted-foreground">We'll send you a verification code</p>
+                  <p className="text-xs text-muted-foreground">Sign up or log in with email</p>
                 </div>
               </button>
               <button
@@ -235,7 +157,7 @@ const Signup = () => {
                 </div>
                 <div>
                   <p className="font-semibold text-foreground">Continue with Phone</p>
-                  <p className="text-xs text-muted-foreground">Verify via SMS code</p>
+                  <p className="text-xs text-muted-foreground">Quick sign up with phone number</p>
                 </div>
               </button>
               <p className="pt-8 text-center text-sm text-muted-foreground">
@@ -254,7 +176,6 @@ const Signup = () => {
             </motion.div>
           )}
 
-          {/* Step 2a: Email input */}
           {step === "email-input" && (
             <motion.div key="email" {...fade} className="w-full space-y-5">
               {!isLogin && (
@@ -270,12 +191,16 @@ const Signup = () => {
                 <label className="text-[13px] font-medium text-foreground/70">Email</label>
                 <Input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
               </div>
+              <div className="space-y-2">
+                <label className="text-[13px] font-medium text-foreground/70">Password</label>
+                <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+              </div>
               <Button
                 className="w-full rounded-full bg-foreground py-6 text-base font-semibold text-primary-foreground hover:opacity-90"
                 onClick={handleEmailSubmit}
                 disabled={loading}
               >
-                {loading ? "Sending code..." : "Send verification code"}
+                {loading ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
               <p className="text-center text-sm text-muted-foreground">
@@ -290,7 +215,6 @@ const Signup = () => {
             </motion.div>
           )}
 
-          {/* Step 2b: Phone input */}
           {step === "phone-input" && (
             <motion.div key="phone" {...fade} className="w-full space-y-5">
               {avatarPicker}
@@ -311,54 +235,6 @@ const Signup = () => {
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
               <button onClick={() => setStep("method")} className="flex w-full items-center justify-center gap-1.5 pt-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ArrowLeft className="h-3.5 w-3.5" /> Back
-              </button>
-            </motion.div>
-          )}
-
-          {/* Step 3: OTP verification */}
-          {step === "otp-verify" && (
-            <motion.div key="otp" {...fade} className="w-full space-y-6">
-              <div className="flex justify-center gap-3" onPaste={handleOtpPaste}>
-                {otp.map((digit, i) => (
-                  <input
-                    key={i}
-                    ref={(el) => { otpRefs.current[i] = el; }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtpChange(i, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="h-14 w-11 rounded-xl border border-border/50 bg-secondary/50 text-center text-xl font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/30 focus:border-foreground/20 transition-all"
-                  />
-                ))}
-              </div>
-              <Button
-                className="w-full rounded-full bg-foreground py-6 text-base font-semibold text-primary-foreground hover:opacity-90"
-                onClick={handleVerifyOtp}
-                disabled={loading || otpCode.length !== OTP_LENGTH}
-              >
-                {loading ? "Verifying..." : "Verify"}
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
-              <p className="text-center text-sm text-muted-foreground">
-                Didn't get a code?{" "}
-                <button
-                  onClick={handleResend}
-                  disabled={resendCooldown > 0}
-                  className="font-semibold text-foreground hover:underline underline-offset-4 disabled:opacity-40 disabled:no-underline"
-                >
-                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
-                </button>
-              </p>
-              <button
-                onClick={() => {
-                  setOtp(Array(OTP_LENGTH).fill(""));
-                  setStep(authMethod === "email" ? "email-input" : "phone-input");
-                }}
-                className="flex w-full items-center justify-center gap-1.5 pt-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
                 <ArrowLeft className="h-3.5 w-3.5" /> Back
               </button>
             </motion.div>
