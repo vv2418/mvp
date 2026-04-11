@@ -6,6 +6,7 @@ import MemberProfileSheet from "@/components/MemberProfileSheet";
 import MentionInput from "@/components/chat/MentionInput";
 import MessageBubble from "@/components/chat/MessageBubble";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface RoomMember {
   id: string;
@@ -22,6 +23,11 @@ interface Message {
   is_ai: boolean;
   created_at: string;
 }
+
+const CHAT_IDLE_MINUTES = Math.max(
+  1,
+  Number(import.meta.env.VITE_CHAT_IDLE_MINUTES || 10),
+);
 
 /** Generate an event-specific icebreaker message */
 function getEventIcebreaker(eventTitle: string): string {
@@ -54,11 +60,13 @@ const Chat = () => {
   const [roomTitle, setRoomTitle] = useState("");
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [canReply, setCanReply] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState("You");
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const idleTimerRef = useRef<number | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -84,13 +92,23 @@ const Chat = () => {
       // Get room info
       const { data: room } = await supabase
         .from("rooms")
-        .select("id, event_title")
+        .select("id, event_title, event_id")
         .eq("id", roomId)
         .maybeSingle();
 
       if (!room) { navigate("/rooms"); return; }
       const title = room.event_title || "Chat Room";
       setRoomTitle(title);
+
+      const { data: likedSwipe } = await supabase
+        .from("swipes")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("event_id", room.event_id)
+        .eq("direction", "right")
+        .maybeSingle();
+      const hasLikedEvent = Boolean(likedSwipe);
+      setCanReply(hasLikedEvent);
 
       // Load existing messages
       const { data: existingMessages } = await supabase
@@ -107,7 +125,7 @@ const Chat = () => {
           .from("messages")
           .insert({
             room_id: roomId,
-            user_id: user.id,
+            user_id: null,
             sender_name: "Rekindled AI",
             content: getEventIcebreaker(title),
             is_ai: true,
@@ -118,32 +136,38 @@ const Chat = () => {
       }
 
       // Get members
-      const { data: roomMembers } = await supabase
-        .from("room_users")
-        .select("user_id")
-        .eq("room_id", roomId);
+      if (hasLikedEvent) {
+        const { data: roomMembers } = await supabase
+          .from("room_users")
+          .select("user_id")
+          .eq("room_id", roomId);
 
-      if (roomMembers && roomMembers.length > 0) {
-        const userIds = roomMembers.map((m) => m.user_id);
-        const [{ data: profiles }, { data: interests }] = await Promise.all([
-          supabase.from("profiles").select("id, name, avatar_url").in("id", userIds),
-          supabase.from("user_interests").select("user_id, interest_id").in("user_id", userIds),
-        ]);
+        if (roomMembers && roomMembers.length > 0) {
+          const userIds = roomMembers.map((m) => m.user_id);
+          const [{ data: profiles }, { data: interests }] = await Promise.all([
+            supabase.from("profiles").select("id, name, avatar_url").in("id", userIds),
+            supabase.from("user_interests").select("user_id, interest_id").in("user_id", userIds),
+          ]);
 
-        const interestMap: Record<string, string[]> = {};
-        for (const i of interests || []) {
-          if (!interestMap[i.user_id]) interestMap[i.user_id] = [];
-          interestMap[i.user_id].push(i.interest_id);
+          const interestMap: Record<string, string[]> = {};
+          for (const i of interests || []) {
+            if (!interestMap[i.user_id]) interestMap[i.user_id] = [];
+            interestMap[i.user_id].push(i.interest_id);
+          }
+
+          setMembers(
+            (profiles || []).map((p) => ({
+              id: p.id,
+              name: p.name || "Anonymous",
+              avatar_url: p.avatar_url,
+              interests: interestMap[p.id] || [],
+            }))
+          );
+        } else {
+          setMembers([]);
         }
-
-        setMembers(
-          (profiles || []).map((p) => ({
-            id: p.id,
-            name: p.name || "Anonymous",
-            avatar_url: p.avatar_url,
-            interests: interestMap[p.id] || [],
-          }))
-        );
+      } else {
+        setMembers([]);
       }
 
       setLoading(false);
@@ -182,8 +206,57 @@ const Chat = () => {
     };
   }, [roomId]);
 
+  const triggerIdleRevive = useCallback(async () => {
+    if (!roomId || !roomTitle || !currentUserId) return;
+
+    try {
+      await supabase.functions.invoke("chat-ai", {
+        body: {
+          room_id: roomId,
+          event_title: roomTitle,
+          user_id: currentUserId,
+          mode: "revive",
+          idle_after_minutes: CHAT_IDLE_MINUTES,
+        },
+      });
+    } catch (err) {
+      console.error("Idle revive error:", err);
+    }
+  }, [roomId, roomTitle, currentUserId]);
+
+  useEffect(() => {
+    if (idleTimerRef.current) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+
+    if (messages.length === 0) return;
+
+    const latestMessage = messages[messages.length - 1];
+    const latestTimestamp = new Date(latestMessage.created_at).getTime();
+    if (!Number.isFinite(latestTimestamp)) return;
+
+    const triggerAt = latestTimestamp + CHAT_IDLE_MINUTES * 60 * 1000;
+    const delay = Math.max(0, triggerAt - Date.now());
+
+    idleTimerRef.current = window.setTimeout(() => {
+      triggerIdleRevive();
+    }, delay);
+
+    return () => {
+      if (idleTimerRef.current) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    };
+  }, [messages, triggerIdleRevive]);
+
   const handleSend = async (text: string) => {
     if (!roomId || !currentUserId) return;
+    if (!canReply) {
+      toast.error("Like this event first if you want to reply");
+      return;
+    }
 
     // Insert into DB (realtime will add it to the list)
     await supabase
@@ -281,6 +354,26 @@ const Chat = () => {
           </div>
         </div>
 
+        {!canReply && (
+          <div className="border-b border-border bg-accent/5 px-4 py-3 lg:px-8">
+            <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-2xl border border-accent/15 bg-card/80 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Read-only preview</p>
+                <p className="text-xs text-muted-foreground">
+                  You can follow the conversation, but only people who liked this event can reply.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/feed")}
+                className="shrink-0 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                Go like it
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-6 lg:px-8">
           <div className="mx-auto max-w-2xl space-y-6">
@@ -302,7 +395,12 @@ const Chat = () => {
         {/* Input */}
         <div className="shrink-0 border-t border-border bg-card/80 backdrop-blur-xl px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:px-8">
           <div className="mx-auto max-w-2xl">
-            <MentionInput options={mentionOptions} onSend={handleSend} />
+            <MentionInput options={mentionOptions} onSend={handleSend} disabled={!canReply} />
+            {!canReply && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                This event chat is public to view. Replies unlock after you like the event.
+              </p>
+            )}
           </div>
         </div>
 

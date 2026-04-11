@@ -7,8 +7,9 @@ import { fetchTicketmasterEvents } from "@/lib/ticketmaster";
 import { EventData } from "@/components/EventCard";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
-import { Flame, X, Heart, MapPin, Search } from "lucide-react";
+import { Flame, X, Heart, MapPin, Search, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 /** Map event tag → interest id for matching */
 const TAG_TO_INTEREST: Record<string, string> = {
@@ -57,7 +58,34 @@ const TAG_TO_INTEREST: Record<string, string> = {
   "Running": "fitness", "Cycling": "fitness",
 };
 
+const LOCATION_STORAGE_KEY = "rekindle_last_location";
+
+function readSavedLocation(): { lat?: number; lng?: number; city?: string } | null {
+  try {
+    const raw = localStorage.getItem(LOCATION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      lat: typeof parsed.lat === "number" ? parsed.lat : undefined,
+      lng: typeof parsed.lng === "number" ? parsed.lng : undefined,
+      city: typeof parsed.city === "string" ? parsed.city : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocation(location: { lat?: number; lng?: number; city?: string }) {
+  try {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(location));
+  } catch {
+    // Ignore storage issues and keep the current session working.
+  }
+}
+
 const Feed = () => {
+  const navigate = useNavigate();
   useEffect(() => {
     trackEvent("onboarding_activation");
   }, []);
@@ -89,6 +117,7 @@ const Feed = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastLocationRef = useRef<{ lat?: number; lng?: number; city?: string }>({});
   const swipedIdsRef = useRef<Set<string>>(new Set());
@@ -114,6 +143,9 @@ const Feed = () => {
   const loadEvents = useCallback(async (options: { lat?: number; lng?: number; city?: string } = {}) => {
     setLoadingEvents(true);
     lastLocationRef.current = { lat: options.lat, lng: options.lng, city: options.city };
+    if (options.lat != null || options.city) {
+      saveLocation(lastLocationRef.current);
+    }
     try {
       const tmEvents = await fetchTicketmasterEvents({ ...options, size: 20 });
       const finalEvents = tmEvents.length > 0 ? tmEvents : MOCK_EVENTS;
@@ -130,6 +162,14 @@ const Feed = () => {
 
   // On mount: try geolocation, fall back to city prompt
   useEffect(() => {
+    const savedLocation = readSavedLocation();
+    if (savedLocation?.lat != null || savedLocation?.city) {
+      lastLocationRef.current = savedLocation;
+      setCityInput(savedLocation.city || "");
+      loadEvents(savedLocation);
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         loadEvents({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -252,6 +292,39 @@ const Feed = () => {
     },
     [handleSwipe]
   );
+
+  const handleOpenChat = useCallback(async () => {
+    const event = events[0];
+    if (!event) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Please sign in to view event chats");
+      navigate("/signup");
+      return;
+    }
+
+    setOpeningChat(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ensure-room", {
+        body: {
+          event_id: event.id,
+          event_title: event.title,
+        },
+      });
+
+      if (error) throw error;
+
+      const roomId = data?.room?.id;
+      if (!roomId) throw new Error("Unable to open this chat right now");
+
+      navigate(`/chat/${roomId}`);
+    } catch (err: any) {
+      toast.error(err.message || "Unable to open event chat");
+    } finally {
+      setOpeningChat(false);
+    }
+  }, [events, navigate]);
 
   const currentEvent = events[0];
 
@@ -407,6 +480,16 @@ const Feed = () => {
                   ))}
                 </AnimatePresence>
               </div>
+
+              <button
+                type="button"
+                onClick={handleOpenChat}
+                disabled={!currentEvent || openingChat}
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-5 py-3 text-sm font-semibold text-foreground shadow-card transition-all hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <MessageCircle className="h-4 w-4 text-accent" />
+                {openingChat ? "Opening chat..." : "Preview event chat"}
+              </button>
 
               {/* Action buttons — desktop only (mobile uses swipe) */}
               <div className="mt-4 hidden items-center gap-6 lg:flex">

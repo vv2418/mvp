@@ -7,6 +7,7 @@ import { ArrowRight, ArrowLeft, Camera, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
+import { ensureProfile } from "@/lib/profile";
 
 type Step = "method" | "phone-input" | "email-input";
 
@@ -44,14 +45,15 @@ const Signup = () => {
     setLoading(true);
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await ensureProfile(data.user);
         toast.success("Welcome back!");
         trackEvent("onboarding_auth_success", { flow: "login", auth_method: "email" });
         navigate("/feed");
       } else {
         if (!name.trim()) { toast.error("Please enter your name"); setLoading(false); return; }
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -60,6 +62,7 @@ const Signup = () => {
           },
         });
         if (error) throw error;
+        await ensureProfile(data.user);
         toast.success("Account created!");
         trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "email" });
         navigate("/interests");
@@ -76,12 +79,13 @@ const Signup = () => {
     const tempPassword = `phone_${phone.replace(/\D/g, "")}_${Date.now()}`;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: fakeEmail,
         password: tempPassword,
         options: { data: { name, phone } },
       });
       if (error) throw error;
+      await ensureProfile(data.user);
       toast.success("Welcome to Rekindled!");
       trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "phone" });
       navigate("/interests");

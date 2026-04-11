@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
         .eq("direction", "right");
 
       if (sErr) throw sErr;
-      if (!swipes || swipes.length < 3) continue;
+      if (!swipes || swipes.length < 2) continue;
 
       const { data: room, error: rErr } = await supabase
         .from("rooms")

@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.api-metrics]
 verify_jwt = false
+
+[functions.ensure-room]
+verify_jwt = false
+
+[functions.chat-ai]
+verify_jwt = false

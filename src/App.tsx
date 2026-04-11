@@ -8,6 +8,7 @@ import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import SplashScreen from "@/components/SplashScreen";
 import { supabase } from "@/integrations/supabase/client";
+import { ensureProfile } from "@/lib/profile";
 import Landing from "./pages/Landing";
 import Signup from "./pages/Signup";
 import Interests from "./pages/Interests";
@@ -25,7 +26,15 @@ function AuthRedirectHandler() {
   const location = useLocation();
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      ensureProfile(user).catch(() => {});
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        ensureProfile(user).catch(() => {});
+      });
+
       if (event === "SIGNED_IN" && (location.pathname === "/" || location.pathname === "/signup")) {
         navigate("/feed", { replace: true });
       }
