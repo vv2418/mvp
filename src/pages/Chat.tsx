@@ -182,6 +182,14 @@ const Chat = () => {
       }
 
       setLoading(false);
+
+      // Mark room as read
+      if (user) {
+        (supabase.from("room_users") as unknown as { update: (v: object) => { eq: (a: string, b: string) => { eq: (a: string, b: string) => Promise<unknown> } } })
+          .update({ last_read_at: new Date().toISOString() })
+          .eq("room_id", roomId)
+          .eq("user_id", user.id);
+      }
     };
 
     fetchAll();

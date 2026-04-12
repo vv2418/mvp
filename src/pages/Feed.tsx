@@ -119,8 +119,12 @@ const Feed = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [openingChat, setOpeningChat] = useState(false);
+  const [suggestions, setSuggestions] = useState<EventData[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [currentEventRoomId, setCurrentEventRoomId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<number | null>(null);
   const lastLocationRef = useRef<{ lat?: number; lng?: number; city?: string }>({});
   const swipedIdsRef = useRef<Set<string>>(new Set());
   const swipesLoadedRef = useRef(false);
@@ -195,26 +199,43 @@ const Feed = () => {
     loadEvents({ city });
   };
 
-  const handleSearch = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Debounced autocomplete — fires 400ms after the user stops typing
+  useEffect(() => {
     const query = searchQuery.trim();
-    if (!query) return;
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    if (!query || query.length < 2) { setSuggestions([]); return; }
+
+    setSuggestionsLoading(true);
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const loc = lastLocationRef.current;
+        const results = await fetchTicketmasterEvents({ ...loc, keyword: query, size: 6 });
+        setSuggestions(results);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 400);
+
+    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
+
+  const handleSelectSuggestion = useCallback((event: EventData) => {
+    eventTitlesRef.current[event.id] = event.title;
+    setEvents((prev) => {
+      const filtered = prev.filter((e) => e.id !== event.id);
+      return [event, ...filtered];
+    });
     setIsSearching(true);
-    setLoadingEvents(true);
-    try {
-      const loc = lastLocationRef.current;
-      const tmEvents = await fetchTicketmasterEvents({ ...loc, keyword: query, size: 20 });
-      for (const ev of tmEvents) eventTitlesRef.current[ev.id] = ev.title;
-      setEvents(filterSwiped(sortEvents(tmEvents)));
-    } catch {
-      setEvents([]);
-    } finally {
-      setLoadingEvents(false);
-    }
-  }, [searchQuery, sortEvents, filterSwiped]);
+    setSearchQuery("");
+    setSuggestions([]);
+    setSearchOpen(false);
+  }, []);
 
   const clearSearch = useCallback(() => {
     setSearchQuery("");
+    setSuggestions([]);
     setSearchOpen(false);
     setIsSearching(false);
     const loc = lastLocationRef.current;
@@ -296,38 +317,17 @@ const Feed = () => {
     [handleSwipe]
   );
 
-  const handleOpenChat = useCallback(async () => {
+  // Check if a room exists for the current top card (created by matchmaking = 2+ swipers)
+  useEffect(() => {
     const event = events[0];
-    if (!event) return;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Please sign in to view event chats");
-      navigate("/signup");
-      return;
-    }
-
-    setOpeningChat(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("ensure-room", {
-        body: {
-          event_id: event.id,
-          event_title: event.title,
-        },
-      });
-
-      if (error) throw error;
-
-      const roomId = data?.room?.id;
-      if (!roomId) throw new Error("Unable to open this chat right now");
-
-      navigate(`/chat/${roomId}`);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Unable to open event chat");
-    } finally {
-      setOpeningChat(false);
-    }
-  }, [events, navigate]);
+    if (!event) { setCurrentEventRoomId(null); return; }
+    supabase
+      .from("rooms")
+      .select("id")
+      .eq("event_id", event.id)
+      .maybeSingle()
+      .then(({ data }) => setCurrentEventRoomId(data?.id ?? null));
+  }, [events]);
 
   const currentEvent = events[0];
 
@@ -367,24 +367,23 @@ const Feed = () => {
             </div>
             <AnimatePresence>
               {searchOpen && (
-                <motion.form
+                <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                  onSubmit={handleSearch}
+                  className="overflow-visible pt-3"
                 >
-                  <div className="flex gap-2 pt-3">
+                  <div className="relative flex gap-2">
                     <input
                       ref={searchInputRef}
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search events by name…"
+                      placeholder="Search events…"
                       className="flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
                     />
-                    {isSearching ? (
+                    {isSearching && (
                       <button
                         type="button"
                         onClick={clearSearch}
@@ -392,16 +391,48 @@ const Feed = () => {
                       >
                         Clear
                       </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-white transition-all hover:bg-accent/90 active:scale-95"
-                      >
-                        Search
-                      </button>
                     )}
+
+                    {/* Autocomplete dropdown */}
+                    <AnimatePresence>
+                      {(suggestions.length > 0 || suggestionsLoading) && (
+                        <motion.div
+                          ref={suggestionsRef}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-elevated"
+                        >
+                          {suggestionsLoading && (
+                            <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
+                              <div className="h-8 w-8 shrink-0 rounded-lg bg-secondary animate-pulse" />
+                              <span>Searching…</span>
+                            </div>
+                          )}
+                          {suggestions.map((event) => (
+                            <button
+                              key={event.id}
+                              type="button"
+                              onClick={() => handleSelectSuggestion(event)}
+                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
+                            >
+                              <img
+                                src={event.image}
+                                alt={event.title}
+                                className="h-9 w-9 shrink-0 rounded-lg object-cover bg-secondary"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground">{event.title}</p>
+                                <p className="truncate text-[11px] text-muted-foreground">{event.date} · {event.location}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                </motion.form>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
@@ -484,15 +515,16 @@ const Feed = () => {
                 </AnimatePresence>
               </div>
 
-              <button
-                type="button"
-                onClick={handleOpenChat}
-                disabled={!currentEvent || openingChat}
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-5 py-3 text-sm font-semibold text-foreground shadow-card transition-all hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <MessageCircle className="h-4 w-4 text-accent" />
-                {openingChat ? "Opening chat..." : "Preview event chat"}
-              </button>
+              {currentEventRoomId && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/chat/${currentEventRoomId}`)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-5 py-3 text-sm font-semibold text-foreground shadow-card transition-all hover:bg-card"
+                >
+                  <MessageCircle className="h-4 w-4 text-accent" />
+                  View group chat
+                </button>
+              )}
 
               {/* Action buttons — desktop only (mobile uses swipe) */}
               <div className="mt-4 hidden items-center gap-6 lg:flex">

@@ -78,13 +78,25 @@ Deno.serve(async (req) => {
 
       roomsCreated++;
       usersAdded += members.length;
+
+      // Notify all matched members via email (fire-and-forget)
+      const eventTitle = eventTitles[eventId] || `Event ${eventId}`;
+      for (const member of members) {
+        supabase.functions.invoke("send-notification", {
+          body: {
+            type: "matched",
+            recipient_user_id: member.user_id,
+            data: { event_title: eventTitle, room_id: room.id },
+          },
+        }).catch(() => {});
+      }
     }
 
     // Add new swipers to existing rooms
     for (const eventId of Array.from(existingEventIds)) {
       const { data: room } = await supabase
         .from("rooms")
-        .select("id")
+        .select("id, event_title")
         .eq("event_id", eventId)
         .maybeSingle();
 
@@ -95,7 +107,7 @@ Deno.serve(async (req) => {
         .select("user_id")
         .eq("room_id", room.id);
 
-      const memberIds = new Set((currentMembers || []).map((m: { user_id: string }) => m.user_id));
+      const memberIds = new Set<string>((currentMembers || []).map((m: { user_id: string }) => m.user_id));
 
       const { data: swipes } = await supabase
         .from("swipes")
@@ -110,6 +122,29 @@ Deno.serve(async (req) => {
       if (newMembers.length > 0) {
         await supabase.from("room_users").insert(newMembers);
         usersAdded += newMembers.length;
+
+        // Notify new members + existing members about the new addition
+        const eventTitle = eventTitles[eventId] || room.event_title || `Event ${eventId}`;
+        for (const newMember of newMembers) {
+          // Tell existing members someone joined
+          for (const existingId of Array.from(memberIds)) {
+            supabase.functions.invoke("send-notification", {
+              body: {
+                type: "new_member",
+                recipient_user_id: existingId,
+                data: { event_title: eventTitle, room_id: room.id, new_member_name: "Someone new" },
+              },
+            }).catch(() => {});
+          }
+          // Tell the new member they were matched
+          supabase.functions.invoke("send-notification", {
+            body: {
+              type: "matched",
+              recipient_user_id: newMember.user_id,
+              data: { event_title: eventTitle, room_id: room.id },
+            },
+          }).catch(() => {});
+        }
       }
     }
 

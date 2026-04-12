@@ -17,6 +17,7 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
   const { theme, toggleTheme } = useTheme();
   const [userAvatar, setUserAvatar] = useState<string>("");
   const [userName, setUserName] = useState<string>("You");
+  const [hasUnread, setHasUnread] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -24,13 +25,38 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
       const name = user.user_metadata?.name || "You";
       setUserName(name);
       setUserAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
-      // Check for real avatar in profile
       supabase.from("profiles").select("avatar_url, name").eq("id", user.id).maybeSingle().then(({ data }) => {
         if (data?.name) setUserName(data.name);
         if (data?.avatar_url) setUserAvatar(data.avatar_url);
       });
+
+      // Check for unread messages: any message newer than last_read_at in user's rooms
+      (supabase.from("room_users") as unknown as { select: (cols: string) => { eq: (col: string, val: string) => Promise<{ data: Array<{ room_id: string; last_read_at: string }> | null }> } })
+        .select("room_id, last_read_at")
+        .eq("user_id", user.id)
+        .then(({ data: memberships }) => {
+          if (!memberships?.length) return;
+          const checks = memberships.map(({ room_id, last_read_at }) =>
+            supabase
+              .from("messages")
+              .select("id", { count: "exact", head: true })
+              .eq("room_id", room_id)
+              .eq("is_ai", false)
+              .neq("user_id", user.id)
+              .gt("created_at", last_read_at)
+              .then(({ count }) => (count ?? 0) > 0)
+          );
+          Promise.all(checks).then((results) => setHasUnread(results.some(Boolean)));
+        });
     });
   }, []);
+
+  // Clear unread badge when user is on rooms/chat pages
+  useEffect(() => {
+    if (location.pathname.startsWith("/rooms") || location.pathname.startsWith("/chat")) {
+      setHasUnread(false);
+    }
+  }, [location.pathname]);
 
   return (
     <div className="flex h-[100svh] overflow-hidden">
@@ -54,7 +80,12 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
                     : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                 }`}
               >
-                <Icon className={`h-5 w-5 ${active ? "stroke-[2]" : "stroke-[1.5]"}`} />
+                <span className="relative">
+                  <Icon className={`h-5 w-5 ${active ? "stroke-[2]" : "stroke-[1.5]"}`} />
+                  {path === "/rooms" && hasUnread && (
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent" />
+                  )}
+                </span>
                 {label}
               </button>
             );
@@ -127,7 +158,12 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
                   active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className={`h-[22px] w-[22px] transition-all ${active ? "stroke-[2.5]" : "stroke-[1.5]"}`} />
+                <span className="relative">
+                  <Icon className={`h-[22px] w-[22px] transition-all ${active ? "stroke-[2.5]" : "stroke-[1.5]"}`} />
+                  {path === "/rooms" && hasUnread && (
+                    <span className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-accent" />
+                  )}
+                </span>
                 <span className={`text-[10px] font-medium transition-all ${active ? "opacity-100" : "opacity-60"}`}>{label}</span>
                 {active && (
                   <span className="absolute -top-0.5 left-1/2 h-[2px] w-6 -translate-x-1/2 rounded-full bg-foreground" />

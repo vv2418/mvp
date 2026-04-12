@@ -23,8 +23,7 @@ const INTEREST_EMOJIS: Record<string, string> = {
   volunteering: "❤️", cooking: "👨‍🍳",
 };
 
-const SETTINGS_ITEMS = [
-  { icon: Bell, label: "Notifications", detail: "Manage alerts" },
+const STATIC_SETTINGS = [
   { icon: Shield, label: "Privacy", detail: "Control your data" },
   { icon: Settings, label: "Preferences", detail: "App settings" },
   { icon: HelpCircle, label: "Help & Support", detail: "Get assistance" },
@@ -37,6 +36,7 @@ interface ProfileData {
   interests: string[];
   roomCount: number;
   swipeCount: number;
+  emailNotifications: boolean;
 }
 
 const Profile = () => {
@@ -51,7 +51,7 @@ const Profile = () => {
       if (!user) { setLoading(false); return; }
 
       const [profileRes, interestsRes, roomsRes, swipesRes] = await Promise.allSettled([
-        supabase.from("profiles").select("name, avatar_url, created_at").eq("id", user.id).maybeSingle(),
+        (supabase.from("profiles") as unknown as ReturnType<typeof supabase.from>).select("name, avatar_url, created_at, email_notifications").eq("id", user.id).maybeSingle() as Promise<{ data: { name: string; avatar_url: string; created_at: string; email_notifications: boolean } | null; error: unknown }>,
         supabase.from("user_interests").select("interest_id").eq("user_id", user.id),
         supabase.from("room_users").select("room_id").eq("user_id", user.id),
         supabase.from("swipes").select("id").eq("user_id", user.id).eq("direction", "right"),
@@ -74,12 +74,24 @@ const Profile = () => {
         interests: (interests || []).map((i) => i.interest_id),
         roomCount: rooms?.length ?? 0,
         swipeCount: swipes?.length ?? 0,
+        emailNotifications: (profileRow as unknown as { email_notifications?: boolean })?.email_notifications ?? true,
       });
       setLoading(false);
     };
 
     fetchProfile();
   }, []);
+
+  const handleToggleNotifications = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !profile) return;
+    const next = !profile.emailNotifications;
+    setProfile((p) => p ? { ...p, emailNotifications: next } : p);
+    await (supabase.from("profiles") as unknown as { update: (v: object) => { eq: (col: string, val: string) => Promise<unknown> } })
+      .update({ email_notifications: next })
+      .eq("id", user.id);
+    toast.success(next ? "Email notifications on" : "Email notifications off");
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -102,7 +114,7 @@ const Profile = () => {
 
   return (
     <AppShell>
-      <div className="flex flex-1 flex-col bg-background">
+      <div className="flex flex-1 flex-col bg-background min-h-0">
         {/* Header */}
         <div className="border-b border-border px-6 py-4 lg:px-8">
           <h1 className="font-display text-xl font-bold lg:text-2xl">Profile</h1>
@@ -199,7 +211,26 @@ const Profile = () => {
                     Settings
                   </h3>
                   <div className="space-y-1">
-                    {SETTINGS_ITEMS.map((item) => (
+                    {/* Notifications toggle row */}
+                    <div className="flex w-full items-center gap-4 rounded-xl p-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
+                        <Bell className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">Email Notifications</p>
+                        <p className="text-[11px] text-muted-foreground">Match alerts, new messages</p>
+                      </div>
+                      <button
+                        onClick={handleToggleNotifications}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${profile?.emailNotifications ? "bg-accent" : "bg-secondary"}`}
+                        role="switch"
+                        aria-checked={profile?.emailNotifications}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${profile?.emailNotifications ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+
+                    {STATIC_SETTINGS.map((item) => (
                       <button
                         key={item.label}
                         className="flex w-full items-center gap-4 rounded-xl p-3 text-left transition-colors hover:bg-secondary/30"
