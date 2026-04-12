@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import AppShell from "@/components/AppShell";
 import { LogOut, ChevronRight, Settings, Bell, Shield, HelpCircle, Star, Users, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -39,6 +40,7 @@ interface ProfileData {
 }
 
 const Profile = () => {
+  useRequireAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);

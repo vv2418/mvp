@@ -4,6 +4,7 @@ import AppShell from "@/components/AppShell";
 import { MessageCircle, Search, Sparkles, Users, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const TM_API_KEY = import.meta.env.VITE_TICKETMASTER_API_KEY;
 
@@ -48,6 +49,7 @@ interface RoomData {
 const FILTERS = ["All", "Active", "New", "Archived"];
 
 const Rooms = () => {
+  useRequireAuth();
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");

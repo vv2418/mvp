@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { ArrowLeft, Users, Sparkles, Loader2 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import MemberProfileSheet from "@/components/MemberProfileSheet";
@@ -54,6 +55,7 @@ function getEventIcebreaker(eventTitle: string): string {
 }
 
 const Chat = () => {
+  useRequireAuth();
   const { roomId } = useParams();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);

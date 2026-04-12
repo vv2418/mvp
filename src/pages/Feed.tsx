@@ -10,6 +10,7 @@ import { trackEvent } from "@/lib/analytics";
 import { Flame, X, Heart, MapPin, Search, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 /** Map event tag → interest id for matching */
 const TAG_TO_INTEREST: Record<string, string> = {
@@ -85,6 +86,7 @@ function saveLocation(location: { lat?: number; lng?: number; city?: string }) {
 }
 
 const Feed = () => {
+  useRequireAuth();
   const navigate = useNavigate();
   useEffect(() => {
     trackEvent("onboarding_activation");

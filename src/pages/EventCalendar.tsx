@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AppShell from "@/components/AppShell";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarDays, MapPin } from "lucide-react";
 
@@ -24,6 +25,7 @@ function sameDay(a: Date, b: Date) {
 }
 
 const EventCalendar = () => {
+  useRequireAuth();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const likedEvents: LikedEvent[] = useMemo(() => {
