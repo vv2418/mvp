@@ -133,5 +133,30 @@ export async function fetchTicketmasterEvents(
 
   const json = await res.json();
   const events: TMEvent[] = json._embedded?.events ?? [];
-  return events.map(tmEventToEventData);
+  return deduplicateEvents(events.map(tmEventToEventData));
+}
+
+/**
+ * Ticketmaster lists the same show multiple times with different IDs
+ * (e.g. "GA Tickets", "VIP Package", "Flex Ticket").
+ * Deduplicate by normalised title + date — keep the first occurrence
+ * (lowest index = best sort-by-date ordering).
+ */
+function normaliseTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\s*[-–—|:]\s*(vip|ga|general admission|flex|package|presale|tickets?|experience)\b.*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deduplicateEvents(events: EventData[]): EventData[] {
+  const seen = new Set<string>();
+  return events.filter((e) => {
+    const key = `${normaliseTitle(e.title)}|${e.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

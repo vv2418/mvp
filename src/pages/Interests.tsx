@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,19 @@ const INTERESTS = [
 
 const Interests = () => {
   const [selected, setSelected] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Pre-load existing interests so the page works as an editor, not just onboarding
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setLoading(false); return; }
+      supabase.from("user_interests").select("interest_id").eq("user_id", user.id).then(({ data }) => {
+        if (data && data.length > 0) setSelected(data.map((r) => r.interest_id));
+        setLoading(false);
+      });
+    });
+  }, []);
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -45,7 +57,6 @@ const Interests = () => {
     }
     localStorage.setItem("rekindle_interests", JSON.stringify(selected));
 
-    // Save interests to DB
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error: delErr } = await supabase.from("user_interests").delete().eq("user_id", user.id);
@@ -55,8 +66,12 @@ const Interests = () => {
       if (insErr) { toast.error("Failed to save interests, please try again"); return; }
     }
 
+    toast.success("Interests saved!");
     trackEvent("onboarding_interests_complete", { interest_count: selected.length });
-    navigate("/feed");
+
+    // If coming from within the app, go back; otherwise proceed to feed
+    const fromProfile = document.referrer.includes("/profile") || window.history.length > 2;
+    navigate(fromProfile ? "/profile" : "/feed");
   };
 
   return (

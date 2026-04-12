@@ -156,16 +156,24 @@ const Profile = () => {
                 </motion.div>
 
                 {/* Interests */}
-                {(profile?.interests.length ?? 0) > 0 && (
+                {(
                   <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.12, duration: 0.5 }}
                     className="mt-6"
                   >
-                    <h3 className="mb-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.2em]">
-                      Interests
-                    </h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.2em]">
+                        Interests
+                      </h3>
+                      <button
+                        onClick={() => navigate("/interests")}
+                        className="text-[11px] font-semibold text-accent hover:underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {(profile?.interests ?? []).map((id) => (
                         <span
