@@ -100,15 +100,24 @@ const Chat = () => {
       const title = room.event_title || "Chat Room";
       setRoomTitle(title);
 
-      const { data: likedSwipe } = await supabase
-        .from("swipes")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("event_id", room.event_id)
-        .eq("direction", "right")
-        .maybeSingle();
-      const hasLikedEvent = Boolean(likedSwipe);
-      setCanReply(hasLikedEvent);
+      // Check if user can participate: swiped right OR is already a room member
+      const [{ data: likedSwipe }, { data: membership }] = await Promise.all([
+        supabase
+          .from("swipes")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("event_id", room.event_id)
+          .eq("direction", "right")
+          .maybeSingle(),
+        supabase
+          .from("room_users")
+          .select("user_id")
+          .eq("room_id", roomId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      const canParticipate = Boolean(likedSwipe) || Boolean(membership);
+      setCanReply(canParticipate);
 
       // Load existing messages
       const { data: existingMessages } = await supabase
@@ -135,8 +144,8 @@ const Chat = () => {
         if (aiMsg) setMessages([aiMsg]);
       }
 
-      // Get members
-      if (hasLikedEvent) {
+      // Load members for anyone who can participate (swiped right or is a member)
+      if (canParticipate) {
         const { data: roomMembers } = await supabase
           .from("room_users")
           .select("user_id")
