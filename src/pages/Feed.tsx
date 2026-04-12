@@ -273,13 +273,7 @@ const Feed = () => {
             }
           } catch { /* ignore storage errors */ }
         }
-        // Ensure a room exists immediately for this event (even for 1 user)
-        // so it appears in Rooms list right after swiping right
-        supabase.functions.invoke("ensure-room", {
-          body: { event_id: event.id, event_title: event.title },
-        }).catch(() => {});
-
-        // Also trigger matchmaking to add any other users who swiped the same event
+        // Trigger matchmaking — room is created only when 2+ users swipe the same event
         supabase.functions.invoke("matchmaking", {
           body: { event_titles: eventTitlesRef.current },
         }).catch(() => {});
