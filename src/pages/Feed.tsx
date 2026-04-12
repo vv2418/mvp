@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { AnimatePresence, motion, animate } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import SwipeCard from "@/components/SwipeCard";
 import AppShell from "@/components/AppShell";
 import { MOCK_EVENTS } from "@/data/mockEvents";
@@ -18,14 +18,14 @@ const TAG_TO_INTEREST: Record<string, string> = {
   "Tech": "tech", "Coding": "tech", "Competition": "tech",
   "Networking": "networking", "Startups": "startups",
   "Food": "food", "Festival": "food", "Brunch": "food",
-  "Fitness": "fitness", "Outdoors": "outdoors",
+  "Outdoors": "outdoors",
   "Wellness": "fitness",
   "Art": "art", "Culture": "art",
-  "Comedy": "comedy", "Entertainment": "comedy",
-  "Night Out": "dance", "Dance": "dance",
+  "Entertainment": "comedy",
+  "Night Out": "dance",
   "Social": "networking",
   "Games": "gaming", "Casual": "gaming",
-  "Film": "movies", "Chill": "outdoors",
+  "Chill": "outdoors",
   // Ticketmaster segments
   "Arts & Theatre": "art",
   "Film, TV & Radio": "movies",
@@ -267,13 +267,19 @@ const Feed = () => {
           // Cache liked event for calendar view
           try {
             const liked = JSON.parse(localStorage.getItem("rekindle_liked_events") || "[]");
-            if (!liked.some((e: any) => e.id === event.id)) {
+            if (!liked.some((e: { id: string }) => e.id === event.id)) {
               liked.push({ id: event.id, title: event.title, date: event.date, location: event.location, image: event.image });
               localStorage.setItem("rekindle_liked_events", JSON.stringify(liked));
             }
           } catch { /* ignore storage errors */ }
         }
-        // Trigger matchmaking with all known titles so any new room gets the right name
+        // Ensure a room exists immediately for this event (even for 1 user)
+        // so it appears in Rooms list right after swiping right
+        supabase.functions.invoke("ensure-room", {
+          body: { event_id: event.id, event_title: event.title },
+        }).catch(() => {});
+
+        // Also trigger matchmaking to add any other users who swiped the same event
         supabase.functions.invoke("matchmaking", {
           body: { event_titles: eventTitlesRef.current },
         }).catch(() => {});
@@ -319,8 +325,8 @@ const Feed = () => {
       if (!roomId) throw new Error("Unable to open this chat right now");
 
       navigate(`/chat/${roomId}`);
-    } catch (err: any) {
-      toast.error(err.message || "Unable to open event chat");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Unable to open event chat");
     } finally {
       setOpeningChat(false);
     }

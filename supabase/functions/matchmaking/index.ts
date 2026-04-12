@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
     if (roomErr) throw roomErr;
 
-    const existingEventIds = new Set((existingRooms || []).map((r: any) => r.event_id));
+    const existingEventIds = new Set((existingRooms || []).map((r: { event_id: string }) => r.event_id));
     const newEventIds = eventIds.filter((id) => !existingEventIds.has(id));
 
     let roomsCreated = 0;
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
 
       if (rErr) throw rErr;
 
-      const members = swipes.map((s: any) => ({
+      const members = swipes.map((s: { user_id: string }) => ({
         room_id: room.id,
         user_id: s.user_id,
       }));
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
         .select("user_id")
         .eq("room_id", room.id);
 
-      const memberIds = new Set((currentMembers || []).map((m: any) => m.user_id));
+      const memberIds = new Set((currentMembers || []).map((m: { user_id: string }) => m.user_id));
 
       const { data: swipes } = await supabase
         .from("swipes")
@@ -104,8 +104,8 @@ Deno.serve(async (req) => {
         .eq("direction", "right");
 
       const newMembers = (swipes || [])
-        .filter((s: any) => !memberIds.has(s.user_id))
-        .map((s: any) => ({ room_id: room.id, user_id: s.user_id }));
+        .filter((s: { user_id: string }) => !memberIds.has(s.user_id))
+        .map((s: { user_id: string }) => ({ room_id: room.id, user_id: s.user_id }));
 
       if (newMembers.length > 0) {
         await supabase.from("room_users").insert(newMembers);

@@ -1,4 +1,3 @@
-import { useState, useRef } from "react";
 import {
   motion,
   useMotionValue,
@@ -28,7 +27,7 @@ const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
   const likeOpacity = useTransform(x, [0, 80, 150], [0, 0.6, 1]);
   const nopeOpacity = useTransform(x, [-150, -80, 0], [1, 0.6, 0]);
 
-  const handleDragEnd = (_: any, info: PanInfo) => {
+  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const xVal = info.offset.x;
     if (Math.abs(xVal) > SWIPE_THRESHOLD) {
       const direction = xVal > 0 ? "right" : "left";

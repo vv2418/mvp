@@ -153,11 +153,16 @@ const Rooms = () => {
     fetchUserRooms();
   }, []);
 
-  const filteredRooms = rooms.filter((r) =>
-    searchQuery
-      ? (r.event_title || "").toLowerCase().includes(searchQuery.toLowerCase())
-      : true
-  );
+  const now = Date.now();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  const filteredRooms = rooms.filter((r) => {
+    if (searchQuery && !(r.event_title || "").toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (activeFilter === "New") return now - new Date(r.created_at).getTime() < 7 * DAY_MS;
+    if (activeFilter === "Active") return now - new Date(r.created_at).getTime() < 30 * DAY_MS;
+    if (activeFilter === "Archived") return now - new Date(r.created_at).getTime() >= 30 * DAY_MS;
+    return true;
+  });
 
   return (
     <AppShell>

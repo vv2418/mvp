@@ -1,7 +1,9 @@
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Flame, MessageCircle, CalendarDays, Search, Bell, Sun, Moon } from "lucide-react";
+import { Flame, MessageCircle, CalendarDays, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { supabase } from "@/integrations/supabase/client";
 
 const NAV_ITEMS = [
   { path: "/feed", icon: Flame, label: "Discover" },
@@ -9,15 +11,26 @@ const NAV_ITEMS = [
   { path: "/rooms", icon: MessageCircle, label: "Chats" },
 ];
 
-const MOCK_USER = {
-  name: "You",
-  avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Me",
-};
-
 const AppShell = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const [userAvatar, setUserAvatar] = useState<string>("");
+  const [userName, setUserName] = useState<string>("You");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const name = user.user_metadata?.name || "You";
+      setUserName(name);
+      setUserAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
+      // Check for real avatar in profile
+      supabase.from("profiles").select("avatar_url, name").eq("id", user.id).maybeSingle().then(({ data }) => {
+        if (data?.name) setUserName(data.name);
+        if (data?.avatar_url) setUserAvatar(data.avatar_url);
+      });
+    });
+  }, []);
 
   return (
     <div className="flex h-[100svh] overflow-hidden">
@@ -66,7 +79,7 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
             }`}
           >
             <Avatar className="h-6 w-6">
-              <AvatarImage src={MOCK_USER.avatar} alt="Profile" />
+              <AvatarImage src={userAvatar} alt={userName} />
               <AvatarFallback>U</AvatarFallback>
             </Avatar>
             My Profile
@@ -90,7 +103,7 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
               className="ring-2 ring-accent/50 rounded-full transition-transform hover:scale-105"
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src={MOCK_USER.avatar} alt="Profile" />
+                <AvatarImage src={userAvatar} alt={userName} />
                 <AvatarFallback>U</AvatarFallback>
               </Avatar>
             </button>

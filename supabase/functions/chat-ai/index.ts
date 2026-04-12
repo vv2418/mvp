@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-5-mini",
+          model: "google/gemini-2.5-flash-preview",
           messages: [
             {
               role: "system",

@@ -39,6 +39,23 @@ const Signup = () => {
     }
   };
 
+  const uploadAvatar = async (userId: string): Promise<string | null> => {
+    if (!avatarPreview) return null;
+    try {
+      const res = await fetch(avatarPreview);
+      const blob = await res.blob();
+      const ext = blob.type === "image/png" ? "png" : "jpg";
+      const path = `${userId}/avatar.${ext}`;
+      const { error } = await supabase.storage.from("avatars").upload(path, blob, { upsert: true });
+      if (error) return null;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", userId);
+      return data.publicUrl;
+    } catch {
+      return null;
+    }
+  };
+
   const handleEmailSubmit = async () => {
     if (!email.trim() || !email.includes("@")) { toast.error("Please enter a valid email"); return; }
     if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
@@ -63,12 +80,13 @@ const Signup = () => {
         });
         if (error) throw error;
         await ensureProfile(data.user);
+        if (data.user) await uploadAvatar(data.user.id);
         toast.success("Account created!");
         trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "email" });
         navigate("/interests");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally { setLoading(false); }
   };
 
@@ -86,11 +104,12 @@ const Signup = () => {
       });
       if (error) throw error;
       await ensureProfile(data.user);
+      if (data.user) await uploadAvatar(data.user.id);
       toast.success("Welcome to Rekindled!");
       trackEvent("onboarding_auth_success", { flow: "signup", auth_method: "phone" });
       navigate("/interests");
-    } catch (err: any) {
-      toast.error(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally { setLoading(false); }
   };
 
