@@ -48,10 +48,11 @@ const Interests = () => {
     // Save interests to DB
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Clear existing and insert new
-      await supabase.from("user_interests").delete().eq("user_id", user.id);
+      const { error: delErr } = await supabase.from("user_interests").delete().eq("user_id", user.id);
+      if (delErr) { toast.error("Failed to save interests, please try again"); return; }
       const rows = selected.map((id) => ({ user_id: user.id, interest_id: id }));
-      await supabase.from("user_interests").insert(rows);
+      const { error: insErr } = await supabase.from("user_interests").insert(rows);
+      if (insErr) { toast.error("Failed to save interests, please try again"); return; }
     }
 
     trackEvent("onboarding_interests_complete", { interest_count: selected.length });

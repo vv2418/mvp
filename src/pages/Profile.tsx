@@ -48,17 +48,17 @@ const Profile = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      const [
-        { data: profileRow },
-        { data: interests },
-        { data: rooms },
-        { data: swipes },
-      ] = await Promise.all([
+      const [profileRes, interestsRes, roomsRes, swipesRes] = await Promise.allSettled([
         supabase.from("profiles").select("name, avatar_url, created_at").eq("id", user.id).maybeSingle(),
         supabase.from("user_interests").select("interest_id").eq("user_id", user.id),
         supabase.from("room_users").select("room_id").eq("user_id", user.id),
         supabase.from("swipes").select("id").eq("user_id", user.id).eq("direction", "right"),
       ]);
+
+      const profileRow = profileRes.status === "fulfilled" ? profileRes.value.data : null;
+      const interests = interestsRes.status === "fulfilled" ? interestsRes.value.data : [];
+      const rooms = roomsRes.status === "fulfilled" ? roomsRes.value.data : [];
+      const swipes = swipesRes.status === "fulfilled" ? swipesRes.value.data : [];
 
       const name = profileRow?.name || user.user_metadata?.name || "You";
       const avatar = profileRow?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;

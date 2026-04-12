@@ -121,22 +121,25 @@ const Feed = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastLocationRef = useRef<{ lat?: number; lng?: number; city?: string }>({});
   const swipedIdsRef = useRef<Set<string>>(new Set());
+  const swipesLoadedRef = useRef(false);
 
   // Fetch the current user's already-swiped event IDs into the ref
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) { swipesLoadedRef.current = true; return; }
       const { data: userSwipes } = await supabase
         .from("swipes")
         .select("event_id")
         .eq("user_id", user.id);
       swipedIdsRef.current = new Set((userSwipes || []).map((s) => s.event_id));
+      swipesLoadedRef.current = true;
     })();
   }, []);
 
   const filterSwiped = useCallback((evts: EventData[]) => {
-    if (swipedIdsRef.current.size === 0) return evts;
+    // If swipes haven't loaded yet, keep all events — they'll be filtered on re-render after load
+    if (!swipesLoadedRef.current) return evts;
     return evts.filter((e) => !swipedIdsRef.current.has(e.id));
   }, []);
 
@@ -219,16 +222,14 @@ const Feed = () => {
   }, [loadEvents]);
 
   // Fetch global right-swipe counts for attendee badges
+  // Uses a SECURITY DEFINER RPC so we get true counts across all users, not just own
   useEffect(() => {
     (async () => {
-      const { data: allSwipes } = await supabase
-        .from("swipes")
-        .select("event_id")
-        .eq("direction", "right");
-
+      // Cast needed because auto-generated types don't include this new function
+      const { data } = await (supabase.rpc as unknown as (fn: string) => Promise<{ data: Array<{ event_id: string; swipe_count: number }> | null }>)("get_event_swipe_counts");
       const counts: Record<string, number> = {};
-      for (const row of allSwipes || []) {
-        counts[row.event_id] = (counts[row.event_id] || 0) + 1;
+      for (const row of data || []) {
+        counts[row.event_id] = Number(row.swipe_count);
       }
       setSwipeCounts(counts);
     })();
