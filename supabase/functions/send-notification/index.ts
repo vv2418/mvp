@@ -1,6 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import webpush from "npm:web-push@3.6.7";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
+const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const APP_URL = Deno.env.get("APP_URL") || "https://rekindled.netlify.app";
 const FROM = "Rekindled <onboarding@resend.dev>";
 
@@ -9,7 +12,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ─── Email HTML builder (Luma-style) ─────────────────────────────────────────
+// ─── Email HTML builder (kept but disabled) ───────────────────────────────────
 
 function buildHtml({
   preheader,
@@ -25,14 +28,14 @@ function buildHtml({
 }: {
   preheader: string;
   headline: string;
-  bodyLines: string[];   // each string is a paragraph; wrap in <p> tags
+  bodyLines: string[];
   ctaText: string;
   ctaUrl: string;
   eventTitle: string;
   eventDate?: string;
   eventLocation?: string;
   eventImage?: string;
-  signoff?: string;      // e.g. "The Rekindled team"
+  signoff?: string;
 }): string {
   const eventIconHtml = eventImage
     ? `<img src="${eventImage}" alt="${eventTitle}" width="40" height="40"
@@ -57,87 +60,49 @@ function buildHtml({
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width" />
-  <meta name="x-apple-disable-message-reformatting" />
   <title>${headline}</title>
 </head>
 <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-  <!-- Preheader -->
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader} &nbsp;&#847;&nbsp;&#847;&nbsp;&#847;</div>
-
+  <div style="display:none;max-height:0;overflow:hidden;">${preheader}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
     style="background:#ffffff;padding:40px 20px 48px;max-width:640px;margin:0 auto;">
-    <tr>
-      <td>
-
-        <!-- Event header (Luma-style compact card) -->
-        <table role="presentation" cellpadding="0" cellspacing="0"
-          style="width:100%;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:36px;">
-          <tr>
-            <td style="padding:16px 20px;">
-              <table role="presentation" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="vertical-align:top;padding-right:14px;">
-                    ${eventIconHtml}
-                  </td>
-                  <td style="vertical-align:middle;">
-                    <p style="margin:0 0 2px;font-size:15px;font-weight:700;color:#111827;">${eventTitle}</p>
-                    ${metaLine ? `<p style="margin:0;font-size:13px;color:#6B7280;">${metaLine}</p>` : ""}
-                  </td>
-                  <td style="vertical-align:middle;text-align:right;padding-left:12px;">
-                    <a href="${ctaUrl}" style="font-size:18px;color:#9CA3AF;text-decoration:none;">↗</a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Headline -->
-        <h1 style="margin:0 0 24px;font-size:24px;font-weight:800;line-height:1.3;color:#111827;letter-spacing:-0.4px;">
-          ${headline}
-        </h1>
-
-        <!-- Body -->
-        ${bodyParagraphs}
-
-        ${signoffBlock}
-
-        <!-- CTA button -->
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;">
-          <tr>
-            <td style="border-radius:10px;background:#E8470A;">
-              <a href="${ctaUrl}"
-                style="display:block;padding:13px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:-0.1px;white-space:nowrap;">
-                ${ctaText}
-              </a>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Divider -->
-        <div style="height:1px;background:#F3F4F6;margin:40px 0;"></div>
-
-        <!-- Footer — Rekindled wordmark + unsubscribe (Luma-style) -->
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-          <tr>
-            <td>
-              <p style="margin:0 0 6px;font-size:16px;font-weight:800;color:#9CA3AF;letter-spacing:-0.2px;">🔥 rekindled</p>
-              <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.6;">
-                You received this because you have email notifications on.
-                &nbsp;<a href="${APP_URL}/profile" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-
-      </td>
-    </tr>
+    <tr><td>
+      <table role="presentation" cellpadding="0" cellspacing="0"
+        style="width:100%;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:36px;">
+        <tr><td style="padding:16px 20px;">
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="vertical-align:top;padding-right:14px;">${eventIconHtml}</td>
+              <td style="vertical-align:middle;">
+                <p style="margin:0 0 2px;font-size:15px;font-weight:700;color:#111827;">${eventTitle}</p>
+                ${metaLine ? `<p style="margin:0;font-size:13px;color:#6B7280;">${metaLine}</p>` : ""}
+              </td>
+              <td style="vertical-align:middle;text-align:right;padding-left:12px;">
+                <a href="${ctaUrl}" style="font-size:18px;color:#9CA3AF;text-decoration:none;">↗</a>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+      <h1 style="margin:0 0 24px;font-size:24px;font-weight:800;line-height:1.3;color:#111827;">${headline}</h1>
+      ${bodyParagraphs}
+      ${signoffBlock}
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;">
+        <tr><td style="border-radius:10px;background:#E8470A;">
+          <a href="${ctaUrl}" style="display:block;padding:13px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">${ctaText}</a>
+        </td></tr>
+      </table>
+      <div style="height:1px;background:#F3F4F6;margin:40px 0;"></div>
+      <p style="margin:0 0 6px;font-size:16px;font-weight:800;color:#9CA3AF;">🔥 rekindled</p>
+      <p style="margin:0;font-size:12px;color:#9CA3AF;">
+        You received this because you have email notifications on.
+        &nbsp;<a href="${APP_URL}/profile" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>
+      </p>
+    </td></tr>
   </table>
 </body>
 </html>`;
 }
-
-// ─── Email templates per type ─────────────────────────────────────────────────
 
 type NotificationType = "matched" | "new_member" | "new_message";
 
@@ -165,15 +130,12 @@ function buildEmail(type: NotificationType, data: NotificationData) {
         headline: `Your people found you${name}.`,
         bodyLines: [
           `Someone else just liked <strong>${data.event_title}</strong> — which means you're both going.`,
-          `We put you in a group chat so you can connect before the event. The best conversations happen before you even show up.`,
+          `We put you in a group chat so you can connect before the event.`,
           `Go say hi. 👋`,
         ],
-        ctaText: "Open the chat →",
-        ctaUrl: chatUrl,
-        eventTitle: data.event_title,
-        eventDate: data.event_date,
-        eventLocation: data.event_location,
-        eventImage: data.event_image,
+        ctaText: "Open the chat →", ctaUrl: chatUrl,
+        eventTitle: data.event_title, eventDate: data.event_date,
+        eventLocation: data.event_location, eventImage: data.event_image,
         signoff: "The Rekindled team",
       }),
     };
@@ -187,20 +149,16 @@ function buildEmail(type: NotificationType, data: NotificationData) {
         headline: `${data.new_member_name} just joined your group.`,
         bodyLines: [
           `<strong>${data.new_member_name}</strong> liked <strong>${data.event_title}</strong> and was added to your group chat.`,
-          `Your crew is growing. Go introduce yourself — the best connections happen before the event, not after.`,
+          `Your crew is growing. Go introduce yourself.`,
         ],
-        ctaText: "Meet them →",
-        ctaUrl: chatUrl,
-        eventTitle: data.event_title,
-        eventDate: data.event_date,
-        eventLocation: data.event_location,
-        eventImage: data.event_image,
+        ctaText: "Meet them →", ctaUrl: chatUrl,
+        eventTitle: data.event_title, eventDate: data.event_date,
+        eventLocation: data.event_location, eventImage: data.event_image,
         signoff: "The Rekindled team",
       }),
     };
   }
 
-  // new_message
   const count = data.message_count || 1;
   return {
     subject: `Your ${data.event_title} group is talking`,
@@ -209,14 +167,11 @@ function buildEmail(type: NotificationType, data: NotificationData) {
       headline: `Don't leave them on read${name}.`,
       bodyLines: [
         `<strong>${data.sender_name}</strong> and others in your <strong>${data.event_title}</strong> group have been chatting.`,
-        `You've got ${count > 1 ? `${count} new messages` : "a new message"} waiting. Jump in before the conversation moves on.`,
+        `You've got ${count > 1 ? `${count} new messages` : "a new message"} waiting.`,
       ],
-      ctaText: "Jump in →",
-      ctaUrl: chatUrl,
-      eventTitle: data.event_title,
-      eventDate: data.event_date,
-      eventLocation: data.event_location,
-      eventImage: data.event_image,
+      ctaText: "Jump in →", ctaUrl: chatUrl,
+      eventTitle: data.event_title, eventDate: data.event_date,
+      eventLocation: data.event_location, eventImage: data.event_image,
       signoff: "The Rekindled team",
     }),
   };
@@ -245,7 +200,6 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Get recipient email from auth.users
     const { data: { user }, error: userErr } = await adminClient.auth.admin.getUserById(recipient_user_id);
     if (userErr || !user?.email) {
       return new Response(JSON.stringify({ skipped: "no email" }), {
@@ -253,37 +207,63 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check notification preference
     const { data: profile } = await adminClient
       .from("profiles")
       .select("email_notifications, name")
       .eq("id", recipient_user_id)
       .maybeSingle();
 
-    if (profile?.email_notifications === false) {
-      return new Response(JSON.stringify({ skipped: "notifications off" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const recipientName = profile?.name || user.user_metadata?.name || "";
-    const { subject, html } = buildEmail(type, { ...data, recipient_name: recipientName });
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: FROM, to: [user.email], subject, html }),
-    });
+    // ── Email (disabled for now) ───────────────────────────────────────────────
+    // const { subject, html } = buildEmail(type, { ...data, recipient_name: recipientName });
+    // await fetch("https://api.resend.com/emails", { ... });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Resend error: ${err}`);
+    // ── Push notifications ─────────────────────────────────────────────────────
+    let pushResult: { sent: number; errors: string[] } = { sent: 0, errors: [] };
+
+    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+      webpush.setVapidDetails(
+        "mailto:support@rekindled.app",
+        VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY,
+      );
+
+      const { data: subs } = await adminClient
+        .from("push_subscriptions")
+        .select("subscription")
+        .eq("user_id", recipient_user_id);
+
+      const { subject } = buildEmail(type, { ...data, recipient_name: recipientName });
+
+      const pushPayload = JSON.stringify({
+        title: subject,
+        body: recipientName
+          ? `Hey ${recipientName.split(" ")[0]}! Tap to open your group chat.`
+          : "You have a new notification",
+        url: `${APP_URL}/chat/${data.room_id}`,
+        tag: `rekindled-${data.room_id}`,
+      });
+
+      const results = await Promise.allSettled(
+        (subs || []).map((row) =>
+          webpush.sendNotification(
+            row.subscription as webpush.PushSubscription,
+            pushPayload,
+          )
+        )
+      );
+
+      pushResult.sent = results.filter((r) => r.status === "fulfilled").length;
+      pushResult.errors = results
+        .filter((r) => r.status === "rejected")
+        .map((r) => {
+          const err = (r as PromiseRejectedResult).reason;
+          return `${err?.message} (status=${err?.statusCode}, body=${JSON.stringify(err?.body)})`;
+        });
     }
 
-    return new Response(JSON.stringify({ sent: true }), {
+    return new Response(JSON.stringify({ push: pushResult }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

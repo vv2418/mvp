@@ -236,6 +236,32 @@ Deno.serve(async (req) => {
       throw insertError;
     }
 
+    // Push notify all room members about AI message (fire-and-forget)
+    const { data: roomUsers } = await supabase
+      .from("room_users")
+      .select("user_id")
+      .eq("room_id", roomId);
+
+    const notifyUrl = `${supabaseUrl}/functions/v1/send-notification`;
+    const notifyKey = supabaseKey;
+
+    for (const { user_id } of roomUsers ?? []) {
+      fetch(notifyUrl, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${notifyKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "new_message",
+          recipient_user_id: user_id,
+          data: {
+            event_title: eventTitle,
+            room_id: roomId,
+            sender_name: "Rekindled AI",
+            message_count: 1,
+          },
+        }),
+      }).catch(() => {});
+    }
+
     return new Response(
       JSON.stringify({ success: true, mode: requestedMode }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

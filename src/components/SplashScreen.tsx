@@ -12,8 +12,9 @@ const SplashScreen = ({ onComplete }: { onComplete: () => void }) => {
 
   return (
     <motion.div
+      initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground"
     >
       <h1 className="font-display text-5xl font-bold text-primary-foreground tracking-tight sm:text-6xl">

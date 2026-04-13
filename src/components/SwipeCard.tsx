@@ -5,25 +5,33 @@ import {
   animate,
   PanInfo,
 } from "framer-motion";
-import { Calendar, MapPin, Users } from "lucide-react";
+import { Calendar, MapPin, MessageCircle } from "lucide-react";
 import { EventData } from "@/components/EventCard";
 
 const SWIPE_THRESHOLD = 100;
 const EXIT_X = 600;
+
+const AVATAR_COLORS = [
+  "from-orange-400 to-rose-500",
+  "from-violet-400 to-purple-600",
+  "from-sky-400 to-blue-600",
+  "from-emerald-400 to-teal-600",
+  "from-amber-400 to-orange-500",
+];
 
 interface SwipeCardProps {
   event: EventData;
   onSwipe: (direction: "left" | "right") => void;
   isTop: boolean;
   index: number;
+  roomId?: string | null;
+  onOpenChat?: () => void;
 }
 
-const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
+const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCardProps) => {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 0, 300], [-18, 0, 18]);
   const opacity = useTransform(x, [-300, -100, 0, 100, 300], [0.5, 1, 1, 1, 0.5]);
-
-  // Overlay indicators
   const likeOpacity = useTransform(x, [0, 80, 150], [0, 0.6, 1]);
   const nopeOpacity = useTransform(x, [-150, -80, 0], [1, 0.6, 0]);
 
@@ -42,9 +50,11 @@ const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
     }
   };
 
-  // Stack offset for cards behind
-  const stackScale = Math.max(1 - index * 0.04, 0.9);
-  const stackY = index * 8;
+  const stackScale = Math.max(1 - index * 0.03, 0.9);
+  const stackY = index * 12;
+  const category = event.tags[0] ?? "";
+  const attendeeCount = event.attendees;
+  const avatarCount = Math.min(attendeeCount, 4);
 
   return (
     <motion.div
@@ -62,8 +72,8 @@ const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
       dragElastic={0.9}
       onDragEnd={isTop ? handleDragEnd : undefined}
     >
-      <div className="relative h-full w-full overflow-hidden rounded-3xl border border-border/40 bg-card shadow-elevated select-none">
-        {/* Full image background */}
+      <div className="relative h-full w-full overflow-hidden rounded-2xl bg-card shadow-[0_12px_48px_rgba(232,71,10,0.08),0_4px_16px_rgba(0,0,0,0.06)] select-none">
+        {/* Full image */}
         <img
           src={event.image}
           alt={event.title}
@@ -72,7 +82,7 @@ const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
         />
 
         {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/85" />
 
         {/* LIKE indicator */}
         {isTop && (
@@ -94,47 +104,65 @@ const SwipeCard = ({ event, onSwipe, isTop, index }: SwipeCardProps) => {
           </motion.div>
         )}
 
-        {/* Attendees badge */}
-        <div className="absolute top-5 right-5 z-10 flex items-center gap-1.5 rounded-full bg-black/50 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-white">
-          <Users className="h-3 w-3" />
-          {event.attendees} going
-        </div>
-
-        {/* Bottom content overlay */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 p-6 pb-7">
-          {/* Tags */}
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {event.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-white/15 backdrop-blur-md px-3 py-1 text-[11px] font-semibold text-white/90"
-              >
-                {tag}
-              </span>
-            ))}
+        {/* Category chip — top right */}
+        {category && (
+          <div className="absolute top-5 right-5 z-10">
+            <span className="px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm text-xs font-semibold text-gray-900 shadow-sm">
+              {category}
+            </span>
           </div>
+        )}
 
+        {/* Bottom content */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 p-6 pb-7">
           {/* Title */}
-          <h2 className="mb-1 font-display text-2xl font-bold text-white leading-tight sm:text-3xl">
+          <h2 className="mb-3 font-display text-2xl font-bold text-white leading-tight sm:text-3xl"
+              style={{ textShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
             {event.title}
           </h2>
 
-          {/* Meta */}
-          <div className="mb-2 flex items-center gap-4 text-sm text-white/70">
-            <span className="flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5" />
-              {event.date}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" />
-              {event.location}
-            </span>
+          {/* Date + preview chat row */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-white/85 text-sm">
+              <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>{event.date}</span>
+            </div>
+            {isTop && roomId && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenChat?.(); }}
+                className="flex items-center gap-1 text-white/80 text-xs font-semibold hover:text-white transition-colors"
+              >
+                <MessageCircle className="h-3 w-3" />
+                Preview event chat
+              </button>
+            )}
           </div>
 
-          {/* Description */}
-          <p className="line-clamp-2 text-sm text-white/60 leading-relaxed">
-            {event.description}
-          </p>
+          {/* Venue */}
+          <div className="flex items-center gap-1.5 text-white/75 text-sm mb-5">
+            <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>{event.location}</span>
+          </div>
+
+          {/* Attendee avatars + count */}
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-2">
+              {[...Array(avatarCount)].map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-7 h-7 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} border-2 border-white/80 flex items-center justify-center text-white text-[10px] font-semibold`}
+                >
+                  {String.fromCharCode(65 + i)}
+                </div>
+              ))}
+              {attendeeCount > 4 && (
+                <div className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/80 flex items-center justify-center text-white text-[9px] font-semibold">
+                  +{attendeeCount - 4}
+                </div>
+              )}
+            </div>
+            <span className="text-white/80 text-sm font-medium">{attendeeCount} going</span>
+          </div>
         </div>
       </div>
     </motion.div>

@@ -290,6 +290,23 @@ const Chat = () => {
       .select()
       .single();
 
+    // Push notify other room members (fire-and-forget)
+    const otherMembers = members.filter((m) => m.user_id !== currentUserId);
+    for (const member of otherMembers) {
+      supabase.functions.invoke("send-notification", {
+        body: {
+          type: "new_message",
+          recipient_user_id: member.user_id,
+          data: {
+            event_title: roomTitle,
+            room_id: roomId,
+            sender_name: currentUserName,
+            message_count: 1,
+          },
+        },
+      }).catch(() => {});
+    }
+
     // Get recent messages for AI context
     const recentMsgs = messages.slice(-10).concat({ id: "temp", user_id: currentUserId, sender_name: currentUserName, content: text, is_ai: false, created_at: new Date().toISOString() });
 

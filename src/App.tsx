@@ -18,6 +18,7 @@ import Rooms from "./pages/Rooms";
 import Chat from "./pages/Chat";
 import Profile from "./pages/Profile";
 import EventCalendar from "./pages/EventCalendar";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,8 +48,14 @@ function AuthRedirectHandler() {
 }
 
 const App = () => {
-  const [showSplash, setShowSplash] = useState(true);
-  const hideSplash = useCallback(() => setShowSplash(false), []);
+  const [showSplash, setShowSplash] = useState(() => {
+    if (sessionStorage.getItem("rekindled_splash_done")) return false;
+    return true;
+  });
+  const hideSplash = useCallback(() => {
+    sessionStorage.setItem("rekindled_splash_done", "1");
+    setShowSplash(false);
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -71,6 +78,7 @@ const App = () => {
               <Route path="/rooms" element={<Rooms />} />
               <Route path="/chat/:roomId" element={<Chat />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
