@@ -454,71 +454,75 @@ const Chat = () => {
   return (
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col bg-background">
-        <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col px-6 py-6 lg:px-12 lg:py-8">
+        <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col">
+
+          {/* ── Header ─────────────────────────────────────────────────────── */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8 shrink-0"
+            className="shrink-0 border-b border-border/50 bg-background/95 backdrop-blur-sm px-4 py-4 lg:px-8"
           >
-            <div className="flex items-start gap-3 sm:gap-4">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate("/rooms")}
                 aria-label="Go back"
-                className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.97] sm:mt-2"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.96]"
               >
-                <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2} />
+                <ArrowLeft className="h-[17px] w-[17px]" strokeWidth={2} />
               </button>
+
               <div className="min-w-0 flex-1">
-                <h1
-                  className="line-clamp-2 text-2xl font-semibold leading-tight sm:text-3xl lg:text-4xl"
-                  style={{ fontFamily: "var(--font-heading)" }}
-                >
+                <h1 className="truncate text-[15px] font-semibold leading-tight text-foreground sm:text-base">
                   {roomTitle}
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground font-numeric tabular-nums sm:text-base">
-                  Group chat · <CountUpValue value={members.length} durationMs={700} />{" "}
-                  {members.length === 1 ? "person" : "people"} ·{" "}
-                  <CountUpValue value={messages.length} durationMs={500} /> messages
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {/* Member avatar cluster */}
+                  {members.length > 0 && (
+                    <div className="flex -space-x-1.5">
+                      {members.slice(0, 5).map((m) => (
+                        <img
+                          key={m.id}
+                          src={m.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(m.id)}`}
+                          alt={m.name}
+                          className="h-5 w-5 rounded-full border-2 border-background bg-secondary object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <span className="text-[12px] text-muted-foreground tabular-nums">
+                    {members.length} {members.length === 1 ? "person" : "people"} going
+                  </span>
+                </div>
+              </div>
+
+              {/* Desktop: member list toggle hint */}
+              <div className="hidden lg:flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/50 px-3 py-1.5">
+                <Sparkles className="h-3 w-3 text-accent" />
+                <span className="text-[11px] font-medium text-muted-foreground">Group chat</span>
               </div>
             </div>
           </motion.div>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-6 lg:grid lg:grid-cols-12 lg:gap-8">
-            {/* Mobile: members strip (top) */}
-            <div className="order-1 shrink-0 rounded-2xl border border-border/40 bg-card p-4 shadow-[0_4px_16px_rgba(0,0,0,0.04)] lg:hidden">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                In this room
-              </p>
-              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide">
-                {members.map((member) => (
-                  <MemberTile
-                    key={member.id}
-                    member={member}
-                    variant="chip"
-                    onClick={() => handleMemberClick(member)}
-                  />
-                ))}
-              </div>
-            </div>
+          {/* ── Body ───────────────────────────────────────────────────────── */}
+          <div className="flex min-h-0 flex-1 gap-0 lg:gap-6 lg:px-8 lg:py-6">
 
-            {/* Chat column — left on desktop */}
-            <section className="order-2 flex min-h-0 flex-1 flex-col lg:order-1 lg:col-span-8 xl:col-span-9">
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-[0_4px_16px_rgba(0,0,0,0.04)] lg:min-h-[calc(100svh-240px)]">
+            {/* Chat column */}
+            <section className="flex min-h-0 flex-1 flex-col">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:rounded-2xl lg:border lg:border-border/50 lg:shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
+
+                {/* Preview banner */}
                 {showReadOnlyDiscoverBanner && (
-                  <div className="shrink-0 border-b border-accent/15 bg-accent/5 px-4 py-4 sm:px-5">
-                    <div className="flex flex-col gap-3 rounded-xl border border-accent/20 bg-card/90 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="shrink-0 border-b border-accent/15 bg-accent/[0.04] px-4 py-3 sm:px-5">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">Previewing this chat</p>
-                        <p className="text-xs text-muted-foreground">
-                          You can read what people are saying. Like the event on Discover to reply.
-                        </p>
+                        <p className="text-[13px] font-semibold text-foreground">Previewing this chat</p>
+                        <p className="text-[12px] text-muted-foreground">Like the event on Discover to reply.</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => navigate("/feed")}
-                        className="shrink-0 rounded-xl bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                        className="shrink-0 rounded-full bg-primary px-4 py-1.5 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                       >
                         Go to Discover
                       </button>
@@ -526,56 +530,57 @@ const Chat = () => {
                   </div>
                 )}
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-                  <div className="mx-auto max-w-2xl space-y-6">
-                    {messages.map((msg, i) => (
-                      <MessageBubble
-                        key={msg.id}
-                        senderName={msg.sender_name}
-                        content={msg.content}
-                        isMe={msg.user_id === currentUserId && !msg.is_ai}
-                        isAI={msg.is_ai}
-                        timestamp={new Date(msg.created_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                        index={i}
-                      />
-                    ))}
+                {/* Messages */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 lg:px-6">
+                  <div className="mx-auto max-w-2xl pb-2">
+                    {messages.map((msg, i) => {
+                      const prev = messages[i - 1];
+                      const next = messages[i + 1];
+                      const sameAsPrev = prev && prev.user_id === msg.user_id && prev.is_ai === msg.is_ai;
+                      const sameAsNext = next && next.user_id === msg.user_id && next.is_ai === msg.is_ai;
+                      const member = members.find((m) => m.id === msg.user_id);
+                      return (
+                        <MessageBubble
+                          key={msg.id}
+                          senderName={msg.sender_name}
+                          content={msg.content}
+                          isMe={msg.user_id === currentUserId && !msg.is_ai}
+                          isAI={msg.is_ai}
+                          avatarUrl={member?.avatar_url}
+                          timestamp={new Date(msg.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          index={i}
+                          isFirstInGroup={!sameAsPrev}
+                          isLastInGroup={!sameAsNext}
+                        />
+                      );
+                    })}
                     <div ref={messagesEndRef} />
                   </div>
                 </div>
 
-                <div className="shrink-0 border-t border-border bg-muted/25 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5">
+                {/* Input */}
+                <div className="shrink-0 border-t border-border/50 bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 lg:px-6">
                   <div className="mx-auto max-w-2xl">
                     <MentionInput options={mentionOptions} onSend={handleSend} disabled={!canReply} />
-                    {!canReply && showReadOnlyDiscoverBanner && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Like this event on Discover to unlock replies and mentions.
-                      </p>
-                    )}
-                    {!canReply && !showReadOnlyDiscoverBanner && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        You can read messages here. Like the event (on Discover) to send your own.
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Desktop: members — right */}
-            <aside className="order-3 hidden min-h-0 lg:order-2 lg:col-span-4 lg:flex lg:flex-col xl:col-span-3">
-              <div className="flex max-h-[min(100%,calc(100svh-220px))] flex-col overflow-hidden rounded-2xl border border-border/40 bg-card p-5 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
-                <div className="mb-4 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-accent" />
+            {/* Desktop sidebar — members */}
+            <aside className="hidden w-64 shrink-0 lg:flex lg:flex-col xl:w-72">
+              <div className="flex max-h-[calc(100svh-200px)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
+                <div className="border-b border-border/40 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                     In this room
                   </p>
                 </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-1">
                   {members.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No members loaded yet.</p>
+                    <p className="px-2 py-4 text-sm text-muted-foreground">No members yet.</p>
                   ) : (
                     members.map((member) => (
                       <MemberTile
@@ -588,8 +593,25 @@ const Chat = () => {
                   )}
                 </div>
               </div>
+
+              {/* Mobile members strip below on mobile — still inside this hidden block intentionally */}
             </aside>
           </div>
+
+          {/* Mobile: members strip */}
+          <div className="shrink-0 border-t border-border/40 bg-card px-4 py-3 lg:hidden">
+            <div className="flex gap-3 overflow-x-auto scrollbar-none pb-0.5">
+              {members.map((member) => (
+                <MemberTile
+                  key={member.id}
+                  member={member}
+                  variant="chip"
+                  onClick={() => handleMemberClick(member)}
+                />
+              ))}
+            </div>
+          </div>
+
         </div>
 
         <MemberProfileSheet
