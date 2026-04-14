@@ -4,7 +4,7 @@ import webpush from "npm:web-push@3.6.7";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
-const APP_URL = Deno.env.get("APP_URL") || "https://rekindled.netlify.app";
+const APP_URL = Deno.env.get("APP_URL") || "https://rekindled.social";
 const FROM = "Rekindled <onboarding@resend.dev>";
 
 const corsHeaders = {
