@@ -13,6 +13,107 @@ import { CountUpValue } from '@/components/CountUpValue';
 
 const TM_API_KEY = import.meta.env.VITE_TICKETMASTER_API_KEY;
 
+/** Map user interest IDs → Ticketmaster classification/keyword params */
+const INTEREST_TO_TM: Record<string, { classificationName?: string; keyword?: string }> = {
+  music:       { classificationName: 'music' },
+  sports:      { classificationName: 'sports' },
+  art:         { classificationName: 'arts & theatre' },
+  comedy:      { keyword: 'comedy' },
+  food:        { keyword: 'food & drink' },
+  fitness:     { keyword: 'fitness' },
+  movies:      { keyword: 'film' },
+  dance:       { keyword: 'dance' },
+  gaming:      { keyword: 'gaming' },
+  tech:        { keyword: 'technology' },
+  networking:  { keyword: 'networking' },
+  outdoors:    { keyword: 'outdoor' },
+  startups:    { keyword: 'startup' },
+  cooking:     { keyword: 'cooking' },
+  travel:      { keyword: 'travel' },
+};
+
+interface SuggestedEvent {
+  id: string;
+  title: string;
+  date: string;
+  venue: string;
+  reason: string;
+}
+
+async function fetchSuggestedEvents(
+  interests: string[],
+  likedIds: Set<string>,
+  location?: { lat: number; lng: number } | { city: string }
+): Promise<SuggestedEvent[]> {
+  if (!TM_API_KEY || interests.length === 0) return [];
+
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const results: SuggestedEvent[] = [];
+  const seen = new Set<string>();
+
+  // Pick top 3 interests to query
+  const toQuery = interests.slice(0, 3);
+
+  await Promise.all(
+    toQuery.map(async (interest) => {
+      const tm = INTEREST_TO_TM[interest];
+      if (!tm) return;
+
+      const params = new URLSearchParams({
+        apikey: TM_API_KEY,
+        size: '5',
+        sort: 'date,asc',
+        startDateTime: now,
+      });
+
+      if (tm.classificationName) params.set('classificationName', tm.classificationName);
+      if (tm.keyword) params.set('keyword', tm.keyword);
+
+      if (location && 'lat' in location) {
+        params.set('latlong', `${location.lat},${location.lng}`);
+        params.set('radius', '25');
+        params.set('unit', 'miles');
+      } else if (location && 'city' in location) {
+        params.set('city', location.city);
+      }
+
+      try {
+        const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const events: Array<{
+          id: string;
+          name: string;
+          dates?: { start?: { localDate?: string } };
+          _embedded?: { venues?: Array<{ name: string; city?: { name: string } }> };
+        }> = json._embedded?.events ?? [];
+
+        for (const e of events) {
+          if (likedIds.has(e.id) || seen.has(e.id)) continue;
+          seen.add(e.id);
+          const venue = e._embedded?.venues?.[0];
+          const venueName = venue ? [venue.name, venue.city?.name].filter(Boolean).join(', ') : 'Venue TBA';
+          const localDate = e.dates?.start?.localDate;
+          const dateLabel = localDate
+            ? format(new Date(`${localDate}T12:00:00`), 'EEE, MMM d')
+            : 'Date TBA';
+          results.push({
+            id: e.id,
+            title: e.name,
+            date: dateLabel,
+            venue: venueName,
+            reason: `Based on your interest in ${interest}`,
+          });
+        }
+      } catch {
+        // ignore per-interest failures
+      }
+    })
+  );
+
+  return results.slice(0, 3);
+}
+
 type EventMeta = { name: string; localDate?: string };
 
 async function resolveEventMetaById(eventIds: string[]): Promise<Record<string, EventMeta>> {
@@ -145,6 +246,8 @@ export default function EventCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [likedEvents, setLikedEvents] = useState<LikedEventsMap>({});
+  const [interestSuggestions, setInterestSuggestions] = useState<SuggestedEvent[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const loadLikedEvents = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -223,6 +326,34 @@ export default function EventCalendar() {
     }
 
     setLikedEvents(map);
+
+    // Fetch interest-based suggestions after liked events are known
+    const likedIds = new Set(swipeRows.map((s) => s.event_id));
+    const interests: string[] = (() => {
+      try { return JSON.parse(localStorage.getItem('rekindle_interests') || '[]'); }
+      catch { return []; }
+    })();
+
+    if (interests.length > 0) {
+      setLoadingSuggestions(true);
+      try {
+        const getLocation = (): Promise<GeolocationPosition> =>
+          new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+
+        let loc: { lat: number; lng: number } | undefined;
+        try {
+          const pos = await getLocation();
+          loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        } catch { /* no location — TM returns popular events */ }
+
+        const suggestions = await fetchSuggestedEvents(interests, likedIds, loc);
+        setInterestSuggestions(suggestions);
+      } catch {
+        setInterestSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }
   }, []);
 
   const handleViewChat = useCallback(async (eventId?: string) => {
@@ -284,20 +415,6 @@ export default function EventCalendar() {
     return [...byEventId.values()];
   }, [likedEvents]);
 
-  const suggestedEvents = useMemo(
-    () =>
-      allLikedUnique.slice(0, 3).map((event) => ({
-        title: event.title,
-        date: event.dateLabel,
-        time: event.time,
-        venue: event.venue,
-        attendees: event.attendees,
-        category: event.category || 'Liked',
-        reason: 'From your likes',
-        eventId: event.eventId,
-      })),
-    [allLikedUnique],
-  );
 
   // Derive "This Month" stats from real liked events
   const thisMonthKey = format(currentDate, 'yyyy-MM');
@@ -578,28 +695,41 @@ export default function EventCalendar() {
                   <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                     <Sparkles size={16} className="text-white" />
                   </div>
-                  <h3 className="text-sm font-semibold text-white/90">From your likes</h3>
+                  <h3 className="text-sm font-semibold text-white/90">For you</h3>
                 </div>
-                <div className="space-y-4">
-                  {suggestedEvents.map((event, i) => (
-                    <motion.div
-                      key={event.eventId || `s-${i}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 + i * 0.1 }}
-                      className="bg-white/10 backdrop-blur-sm rounded-xl p-4 hover:bg-white/20 transition-colors cursor-pointer"
-                    >
-                      <h4 className="font-semibold text-sm mb-1">{event.title}</h4>
-                      <p className="text-xs text-white/80 mb-2">{event.reason}</p>
-                      <div className="flex items-center justify-between text-xs text-white/90">
-                        <span>{event.date}</span>
-                        <span className="flex items-center gap-1 font-numeric text-xs tabular-nums">
-                          <Users size={12} />
-                          <CountUpValue value={event.attendees} durationMs={650} />
-                        </span>
-                      </div>
-                    </motion.div>
-                  ))}
+                <div className="space-y-3">
+                  {loadingSuggestions ? (
+                    <div className="space-y-3">
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="bg-white/10 rounded-xl p-4 animate-pulse">
+                          <div className="h-3 bg-white/20 rounded mb-2 w-3/4" />
+                          <div className="h-2 bg-white/15 rounded w-1/2" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : interestSuggestions.length > 0 ? (
+                    interestSuggestions.map((event, i) => (
+                      <motion.div
+                        key={event.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4 + i * 0.1 }}
+                        onClick={() => navigate(`/feed`)}
+                        className="bg-white/10 backdrop-blur-sm rounded-xl p-4 hover:bg-white/20 transition-colors cursor-pointer"
+                      >
+                        <h4 className="font-semibold text-sm mb-1 leading-snug line-clamp-2">{event.title}</h4>
+                        <p className="text-xs text-white/70 mb-2">{event.reason}</p>
+                        <div className="flex items-center justify-between text-xs text-white/90">
+                          <span>{event.date}</span>
+                          <span className="text-white/60 truncate ml-2 text-right">{event.venue.split(',')[0]}</span>
+                        </div>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/60 text-center py-4">
+                      Pick interests in your profile to get suggestions
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowAllSuggestions(true)}
