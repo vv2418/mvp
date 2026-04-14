@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
+import { REKINDLE_PROFILE_UPDATED } from "@/lib/rekindle-events";
 
 const INTERESTS = [
   { id: "music", label: "Music", emoji: "🎵" },
@@ -30,7 +31,19 @@ const INTERESTS = [
 
 const Interests = () => {
   const [selected, setSelected] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Pre-load existing interests so the page works as an editor, not just onboarding
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setLoading(false); return; }
+      supabase.from("user_interests").select("interest_id").eq("user_id", user.id).then(({ data }) => {
+        if (data && data.length > 0) setSelected(data.map((r) => r.interest_id));
+        setLoading(false);
+      });
+    });
+  }, []);
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -45,17 +58,22 @@ const Interests = () => {
     }
     localStorage.setItem("rekindle_interests", JSON.stringify(selected));
 
-    // Save interests to DB
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Clear existing and insert new
-      await supabase.from("user_interests").delete().eq("user_id", user.id);
+      const { error: delErr } = await supabase.from("user_interests").delete().eq("user_id", user.id);
+      if (delErr) { toast.error("Failed to save interests, please try again"); return; }
       const rows = selected.map((id) => ({ user_id: user.id, interest_id: id }));
-      await supabase.from("user_interests").insert(rows);
+      const { error: insErr } = await supabase.from("user_interests").insert(rows);
+      if (insErr) { toast.error("Failed to save interests, please try again"); return; }
     }
 
+    toast.success("Interests saved!");
     trackEvent("onboarding_interests_complete", { interest_count: selected.length });
-    navigate("/feed");
+    window.dispatchEvent(new CustomEvent(REKINDLE_PROFILE_UPDATED));
+
+    // If coming from within the app, go back; otherwise proceed to feed
+    const fromProfile = document.referrer.includes("/profile") || window.history.length > 2;
+    navigate(fromProfile ? "/profile" : "/feed");
   };
 
   return (

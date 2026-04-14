@@ -69,7 +69,7 @@ const PricingSection = ({ onAction }: { onAction: () => void }) => (
               {plan.name}
             </p>
             <div className="mb-1 flex items-baseline gap-1">
-              <span className="font-display text-4xl font-bold text-white">{plan.price}</span>
+              <span className="font-numeric text-4xl text-white">{plan.price}</span>
               {plan.detail && (
                 <span className="text-sm text-white/30">/ {plan.detail}</span>
               )}

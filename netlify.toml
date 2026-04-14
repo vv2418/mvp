@@ -13,6 +13,12 @@
   to = "/.netlify/functions/api-metrics"
   status = 200
 
+# SPA fallback: serve index.html for all unmatched routes so React Router handles them
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 # Vite exposes all `VITE_*` env vars to the client bundle.
 # These Supabase values are intentionally public (project URL/id + anon/publishable key),
 # but Netlify's secrets scanner will still flag them unless omitted explicitly.
