@@ -60,23 +60,42 @@ Deno.serve(async (req) => {
       if (sErr) throw sErr;
       if (!swipes || swipes.length < 2) continue;
 
-      const { data: room, error: rErr } = await supabase
+      const uniqueUserIds = [...new Set((swipes || []).map((s: { user_id: string }) => s.user_id))];
+      if (uniqueUserIds.length < 2) continue;
+
+      let room: { id: string } | null = null;
+      const ins = await supabase
         .from("rooms")
         .insert({ event_id: eventId, event_title: eventTitles[eventId] || `Event ${eventId}` })
         .select("id")
         .single();
 
-      if (rErr) throw rErr;
+      if (ins.error?.code === "23505") {
+        const { data: existing } = await supabase.from("rooms").select("id").eq("event_id", eventId).maybeSingle();
+        room = existing;
+      } else if (ins.error) {
+        throw ins.error;
+      } else {
+        room = ins.data;
+      }
 
-      const members = swipes.map((s: { user_id: string }) => ({
-        room_id: room.id,
-        user_id: s.user_id,
-      }));
+      if (!room) continue;
+
+      const { data: currentMembers } = await supabase
+        .from("room_users")
+        .select("user_id")
+        .eq("room_id", room.id);
+      const alreadyIn = new Set((currentMembers || []).map((m: { user_id: string }) => m.user_id));
+      const members = uniqueUserIds
+        .filter((user_id) => !alreadyIn.has(user_id))
+        .map((user_id) => ({ room_id: room.id, user_id }));
+
+      if (members.length === 0) continue;
 
       const { error: mErr } = await supabase.from("room_users").insert(members);
       if (mErr) throw mErr;
 
-      roomsCreated++;
+      if (!ins.error) roomsCreated++;
       usersAdded += members.length;
 
       // Notify all matched members via email (fire-and-forget)
@@ -115,9 +134,10 @@ Deno.serve(async (req) => {
         .eq("event_id", eventId)
         .eq("direction", "right");
 
-      const newMembers = (swipes || [])
-        .filter((s: { user_id: string }) => !memberIds.has(s.user_id))
-        .map((s: { user_id: string }) => ({ room_id: room.id, user_id: s.user_id }));
+      const uniqueIds = [...new Set((swipes || []).map((s: { user_id: string }) => s.user_id))];
+      const newMembers = uniqueIds
+        .filter((user_id) => !memberIds.has(user_id))
+        .map((user_id) => ({ room_id: room.id, user_id }));
 
       if (newMembers.length > 0) {
         await supabase.from("room_users").insert(newMembers);

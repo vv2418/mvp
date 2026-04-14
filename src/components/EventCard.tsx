@@ -7,6 +7,8 @@ export interface EventData {
   title: string;
   description: string;
   date: string;
+  /** Ticketmaster `YYYY-MM-DD` when available — used for calendar / liked sync */
+  startDateIso?: string;
   location: string;
   attendees: number;
   image: string;
@@ -50,10 +52,10 @@ const EventCard = ({ event, onJoin, onPass, index }: EventCardProps) => {
           ))}
         </div>
 
-        {/* Attendees badge */}
+        {/* Rekindle-only headcount when wired; legacy cards may show 0 */}
         <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-background/90 backdrop-blur-sm px-3 py-1.5 text-[11px] font-semibold text-foreground">
           <Users className="h-3 w-3" />
-          {event.attendees} going
+          {event.attendees > 0 ? `${event.attendees} from Rekindle` : "Discover on Rekindle"}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Flame, MessageCircle, CalendarDays, Bell, X, ChevronRight, ChevronLeft } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -23,12 +23,41 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
   const { supported: pushSupported, permission, subscribe } = usePushNotifications();
   const [showPushBanner, setShowPushBanner] = useState(false);
   const [expanded, setExpanded] = useState(() => localStorage.getItem("sidebar_expanded") !== "false");
+  /** Labels animate out before width shrinks on collapse — avoids a hollow wide rail + layout snap. */
+  const [labelsVisible, setLabelsVisible] = useState(() => localStorage.getItem("sidebar_expanded") !== "false");
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const LABEL_HIDE_MS = 220;
 
   const toggleSidebar = () => {
-    const next = !expanded;
-    setExpanded(next);
-    localStorage.setItem("sidebar_expanded", String(next));
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    if (expanded) {
+      // Collapse: hide labels first, then shrink width after animation
+      setLabelsVisible(false);
+      collapseTimerRef.current = setTimeout(() => {
+        collapseTimerRef.current = null;
+        setExpanded(false);
+        localStorage.setItem("sidebar_expanded", "false");
+      }, LABEL_HIDE_MS);
+    } else {
+      // Expand: grow width immediately, then show labels after width starts moving
+      setExpanded(true);
+      localStorage.setItem("sidebar_expanded", "true");
+      collapseTimerRef.current = setTimeout(() => {
+        collapseTimerRef.current = null;
+        setLabelsVisible(true);
+      }, 120);
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -41,10 +70,11 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
         if (data?.avatar_url) setUserAvatar(data.avatar_url);
       });
 
-      (supabase.from("room_users") as unknown as { select: (cols: string) => { eq: (col: string, val: string) => Promise<{ data: Array<{ room_id: string; last_read_at: string }> | null }> } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from("room_users") as any)
         .select("room_id, last_read_at")
         .eq("user_id", user.id)
-        .then(({ data: memberships }) => {
+        .then(({ data: memberships }: { data: Array<{ room_id: string; last_read_at: string }> | null }) => {
           if (!memberships?.length) return;
           const checks = memberships.map(({ room_id, last_read_at }) =>
             supabase.from("messages").select("id", { count: "exact", head: true })
@@ -86,20 +116,30 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
 
       {/* ── Desktop sidebar ──────────────────────────────────────────────────── */}
       <aside
-        className={`hidden lg:flex lg:flex-col lg:border-r lg:border-border lg:bg-card/50 transition-all duration-200 ease-in-out ${expanded ? "lg:w-60" : "lg:w-20"}`}
+        className={`hidden lg:flex lg:flex-col lg:border-r lg:border-border lg:bg-background lg:shrink-0 transition-[width] duration-[320ms] ease-[cubic-bezier(0.33,1,0.68,1)] ${expanded ? "lg:w-56" : "lg:w-20"}`}
       >
         {/* Logo */}
-        <div className={`flex h-18 items-center shrink-0 ${expanded ? "px-5 gap-3" : "justify-center"}`} style={{ height: "72px" }}>
-          <div className="w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm">
-            <span className="text-white font-bold text-lg font-display">R</span>
+        <button
+          onClick={() => navigate("/feed")}
+          className="flex items-center shrink-0 gap-3 px-6 py-8 mb-10 transition-opacity hover:opacity-90"
+          aria-label="Go to Discover"
+        >
+          <div className="w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>R</span>
           </div>
-          {expanded && (
-            <span className="font-display text-xl font-bold text-foreground tracking-tight truncate">Rekindled</span>
-          )}
-        </div>
+          <span
+            className={`min-w-0 overflow-hidden whitespace-nowrap font-bold tracking-tight text-foreground transition-[opacity,max-width] ease-[cubic-bezier(0.33,1,0.68,1)] ${
+              labelsVisible ? "max-w-[10rem] opacity-100" : "max-w-0 opacity-0"
+            }`}
+            style={{ fontFamily: "var(--font-heading)", fontSize: "1.2rem", transitionDuration: `${LABEL_HIDE_MS}ms` }}
+            aria-hidden={!labelsVisible}
+          >
+            Rekindled
+          </span>
+        </button>
 
-        {/* Nav */}
-        <nav className={`flex flex-1 flex-col gap-1.5 py-4 ${expanded ? "px-4" : "px-3"}`}>
+        {/* Nav — evenly spread with gap-6 like Figma */}
+        <nav className="flex flex-1 flex-col gap-6 px-4">
           {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
             const active = location.pathname === path || (path === "/rooms" && location.pathname.startsWith("/chat"));
             return (
@@ -107,33 +147,56 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
                 key={path}
                 onClick={() => navigate(path)}
                 title={!expanded ? label : undefined}
-                className={`flex items-center rounded-xl transition-all ${
-                  expanded ? "gap-3 px-3 py-3.5" : "justify-center py-3.5"
-                } ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"}`}
+                className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-3 transition-[color,background-color] duration-200 ${
+                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
               >
                 <span className="relative shrink-0">
-                  <Icon className={`h-6 w-6 ${active ? "stroke-[2]" : "stroke-[1.5]"}`} />
+                  <Icon size={20} />
                   {path === "/rooms" && hasUnread && (
                     <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent" />
                   )}
                 </span>
-                {expanded && <span className="text-sm font-semibold truncate">{label}</span>}
+                <span
+                  className={`min-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold transition-[opacity,max-width] ease-[cubic-bezier(0.33,1,0.68,1)] ${
+                    labelsVisible ? "max-w-[9rem] opacity-100" : "max-w-0 opacity-0"
+                  }`}
+                  style={{ transitionDuration: `${LABEL_HIDE_MS}ms` }}
+                  aria-hidden={!labelsVisible}
+                >
+                  {label}
+                </span>
               </button>
             );
           })}
         </nav>
 
         {/* Expand/collapse toggle */}
-        <div className={`border-t border-border py-4 ${expanded ? "px-4" : "px-3"}`}>
+        <div className="border-t border-border px-4 py-6">
           <button
             onClick={toggleSidebar}
-            title={expanded ? "Collapse sidebar" : "Expand sidebar"}
-            className={`flex items-center rounded-xl py-3 text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-all ${expanded ? "gap-3 px-3 w-full" : "justify-center w-full"}`}
+            title={labelsVisible ? "Collapse sidebar" : "Expand sidebar"}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-muted-foreground transition-[color,background-color] duration-200 hover:bg-muted hover:text-foreground"
           >
-            {expanded
-              ? <><ChevronLeft className="h-5 w-5 shrink-0" /><span className="text-sm font-semibold">Collapse</span></>
-              : <ChevronRight className="h-5 w-5" />
-            }
+            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+              <ChevronLeft
+                className={`absolute h-5 w-5 transition-opacity duration-300 ${expanded ? "opacity-100" : "opacity-0"}`}
+                aria-hidden={!expanded}
+              />
+              <ChevronRight
+                className={`absolute h-5 w-5 transition-opacity duration-300 ${expanded ? "opacity-0" : "opacity-100"}`}
+                aria-hidden={expanded}
+              />
+            </span>
+            <span
+              className={`min-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold transition-[opacity,max-width] ease-[cubic-bezier(0.33,1,0.68,1)] ${
+                labelsVisible ? "max-w-[6rem] opacity-100" : "max-w-0 opacity-0"
+              }`}
+              style={{ transitionDuration: `${LABEL_HIDE_MS}ms` }}
+              aria-hidden={!labelsVisible}
+            >
+              Collapse
+            </span>
           </button>
         </div>
       </aside>
@@ -143,7 +206,7 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
 
         {/* Mobile top bar */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
-          <a href="/" className="font-display text-lg font-bold text-foreground tracking-tight">Rekindled</a>
+          <button onClick={() => navigate("/feed")} className="font-display text-lg font-bold text-foreground tracking-tight">Rekindled</button>
           <button onClick={() => navigate("/profile")} className="ring-2 ring-accent/50 rounded-full">
             <Avatar className="h-8 w-8">
               <AvatarImage src={userAvatar} alt={userName} />

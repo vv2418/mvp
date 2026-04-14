@@ -55,17 +55,17 @@ const MessageBubble = ({ senderName, content, isMe, isAI, timestamp, index }: Me
           </span>
         )}
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
             isMe
-              ? "bg-foreground text-primary-foreground rounded-br-md"
+              ? "bg-primary text-primary-foreground rounded-br-md border border-primary"
               : isAI
-              ? "bg-accent/8 text-foreground border border-accent/15 rounded-bl-md"
-              : "bg-card border border-border text-foreground rounded-bl-md"
+              ? "bg-accent/10 text-foreground border border-accent/20 rounded-bl-md"
+              : "bg-background/80 border border-border/80 text-foreground rounded-bl-md"
           }`}
         >
           {renderContent(content)}
         </div>
-        <span className="mt-1.5 block text-[10px] text-muted-foreground">{timestamp}</span>
+        <span className="mt-1.5 block text-[10px] font-numeric text-muted-foreground tabular-nums">{timestamp}</span>
       </div>
     </motion.div>
   );

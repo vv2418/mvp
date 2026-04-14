@@ -96,7 +96,21 @@ Deno.serve(async (req) => {
         });
       }
     } else {
-      // Create new room
+      // Do not create a room until at least two people have liked this event
+      const { data: likers, error: likersErr } = await supabase
+        .from("swipes")
+        .select("user_id")
+        .eq("event_id", event_id)
+        .eq("direction", "right");
+
+      if (likersErr) throw likersErr;
+      const uniqueLikers = new Set((likers || []).map((s: { user_id: string }) => s.user_id));
+      if (uniqueLikers.size < 2) {
+        return new Response(JSON.stringify({ room: null, need_more_likers: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const { data: newRoom, error: createError } = await supabase
         .from("rooms")
         .insert({
@@ -109,7 +123,6 @@ Deno.serve(async (req) => {
       if (createError) throw createError;
       room = newRoom;
 
-      // Seed icebreaker message via service role (bypasses RLS)
       const title = room.event_title || `Event ${room.event_id}`;
       await supabase.from("messages").insert({
         room_id: room.id,
@@ -141,9 +154,10 @@ Deno.serve(async (req) => {
         .eq("room_id", room.id);
 
       const memberSet = new Set((currentMembers || []).map((m: { user_id: string }) => m.user_id));
-      const newMembers = swipers
-        .filter((s: { user_id: string }) => !memberSet.has(s.user_id))
-        .map((s: { user_id: string }) => ({ room_id: room.id, user_id: s.user_id }));
+      const uniqueSwipers = [...new Set((swipers || []).map((s: { user_id: string }) => s.user_id))];
+      const newMembers = uniqueSwipers
+        .filter((user_id) => !memberSet.has(user_id))
+        .map((user_id) => ({ room_id: room.id, user_id }));
 
       if (newMembers.length > 0) {
         await supabase.from("room_users").insert(newMembers);

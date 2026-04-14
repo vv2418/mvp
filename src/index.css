@@ -48,6 +48,8 @@
     --sidebar-accent-foreground: 220 15% 20%;
     --sidebar-border: 35 14% 91%;
     --sidebar-ring: 220 20% 8%;
+
+    --font-heading: 'Playfair Display', Georgia, serif;
   }
 
   .dark {
@@ -111,6 +113,11 @@
 }
 
 @layer utilities {
+  /* Metrics / numerals — DM Sans (body), matches Discover stat blocks */
+  .font-numeric {
+    @apply font-body font-bold tabular-nums;
+  }
+
   .shadow-card {
     box-shadow: var(--shadow-card);
   }
@@ -122,5 +129,12 @@
   }
   .text-balance {
     text-wrap: balance;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
