@@ -227,19 +227,31 @@ export default function EventCalendar() {
 
   const handleViewChat = useCallback(async (eventId?: string) => {
     if (!eventId) {
-      toast.info('No chat room for this event yet');
+      toast.info("No one's going yet — we'll let you know when the party gets started!");
       return;
     }
-    const { data, error } = await supabase
+    const { data: room } = await supabase
       .from('rooms')
       .select('id')
       .eq('event_id', eventId)
       .maybeSingle();
-    if (error || !data) {
-      toast.info('No chat room for this event yet — swipe right to join one!');
+
+    if (!room) {
+      toast.info("No one's going yet — we'll let you know when the party gets started!");
       return;
     }
-    navigate(`/chat/${data.id}`);
+
+    const { count } = await supabase
+      .from('room_users')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('room_id', room.id);
+
+    if (!count || count < 2) {
+      toast.info("No one's going yet — we'll let you know when the party gets started!");
+      return;
+    }
+
+    navigate(`/chat/${room.id}`);
   }, [navigate]);
 
   useEffect(() => {
