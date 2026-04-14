@@ -143,31 +143,28 @@ const MentionInput = ({ options, onSend, disabled }: MentionInputProps) => {
         )}
       </AnimatePresence>
 
-      <div className="flex items-end gap-2">
-        <div className="relative flex-1 rounded-2xl border border-border/70 bg-card shadow-[0_1px_4px_rgba(0,0,0,0.06)] focus-within:border-foreground/20 focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.04)] transition-all">
-          <textarea
-            ref={inputRef}
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder={disabled ? "Like this event to reply…" : "Message… use @ to mention"}
-            rows={1}
-            disabled={disabled}
-            className="w-full resize-none bg-transparent text-foreground placeholder:text-muted-foreground/60 px-4 py-3 text-[15px] sm:text-sm focus:outline-none min-h-[46px] max-h-[120px] disabled:cursor-not-allowed"
-            style={{ height: "46px" }}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = "46px";
-              el.style.height = Math.min(el.scrollHeight, 120) + "px";
-            }}
-          />
-        </div>
+      <div className="flex items-end gap-3">
+        <textarea
+          ref={inputRef}
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message... Use @ to mention"
+          rows={1}
+          className="flex-1 resize-none rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground px-4 py-3 text-[16px] sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 min-h-[48px] max-h-[120px] shadow-card"
+          style={{ height: "48px" }}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "48px";
+            el.style.height = Math.min(el.scrollHeight, 120) + "px";
+          }}
+        />
         <button
           onClick={handleSend}
           disabled={!value.trim() || disabled}
-          className="flex h-[46px] w-[46px] flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all hover:opacity-90 active:scale-[0.95] disabled:opacity-25 disabled:pointer-events-none"
+          className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground shadow-card transition-all hover:bg-accent/90 active:scale-[0.97] disabled:opacity-30 disabled:shadow-none"
         >
-          <Send className="h-[15px] w-[15px]" />
+          <Send className="h-4 w-4" />
         </button>
       </div>
     </div>
