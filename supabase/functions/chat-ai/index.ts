@@ -81,6 +81,9 @@ Deno.serve(async (req) => {
     const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL");
     if (!AI_GATEWAY_URL) throw new Error("AI_GATEWAY_URL not configured");
 
+    // Keep the model configurable so gateway/provider swaps don't require code edits.
+    const AI_MODEL = Deno.env.get("AI_MODEL") || "gpt-5-mini";
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -171,7 +174,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: AI_MODEL,
           messages: [
             {
               role: "system",
