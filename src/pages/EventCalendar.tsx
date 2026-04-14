@@ -40,6 +40,15 @@ interface SuggestedEvent {
   reason: string;
 }
 
+function normTitle(t: string) {
+  return t
+    .toLowerCase()
+    .replace(/\s*[-–—|:]\s*(vip|ga|general admission|flex|package|presale|tickets?|experience)\b.*/i, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function fetchSuggestedEvents(
   interests: string[],
   likedIds: Set<string>,
@@ -49,7 +58,8 @@ async function fetchSuggestedEvents(
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const results: SuggestedEvent[] = [];
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenTitleDate = new Set<string>();
 
   // Pick top 3 interests to query
   const toQuery = interests.slice(0, 3);
@@ -89,11 +99,13 @@ async function fetchSuggestedEvents(
         }> = json._embedded?.events ?? [];
 
         for (const e of events) {
-          if (likedIds.has(e.id) || seen.has(e.id)) continue;
-          seen.add(e.id);
+          const localDate = e.dates?.start?.localDate ?? '';
+          const dedupKey = `${normTitle(e.name)}|${localDate}`;
+          if (likedIds.has(e.id) || seenIds.has(e.id) || seenTitleDate.has(dedupKey)) continue;
+          seenIds.add(e.id);
+          seenTitleDate.add(dedupKey);
           const venue = e._embedded?.venues?.[0];
           const venueName = venue ? [venue.name, venue.city?.name].filter(Boolean).join(', ') : 'Venue TBA';
-          const localDate = e.dates?.start?.localDate;
           const dateLabel = localDate
             ? format(new Date(`${localDate}T12:00:00`), 'EEE, MMM d')
             : 'Date TBA';
