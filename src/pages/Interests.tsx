@@ -6,6 +6,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
+import { REKINDLE_PROFILE_UPDATED } from "@/lib/rekindle-events";
 
 const INTERESTS = [
   { id: "music", label: "Music", emoji: "🎵" },
@@ -68,6 +69,7 @@ const Interests = () => {
 
     toast.success("Interests saved!");
     trackEvent("onboarding_interests_complete", { interest_count: selected.length });
+    window.dispatchEvent(new CustomEvent(REKINDLE_PROFILE_UPDATED));
 
     // If coming from within the app, go back; otherwise proceed to feed
     const fromProfile = document.referrer.includes("/profile") || window.history.length > 2;

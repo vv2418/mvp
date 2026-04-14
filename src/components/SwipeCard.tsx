@@ -5,7 +5,8 @@ import {
   animate,
   PanInfo,
 } from "framer-motion";
-import { Calendar, MapPin, MessageCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Calendar, MapPin } from "lucide-react";
 import { EventData } from "@/components/EventCard";
 
 const SWIPE_THRESHOLD = 100;
@@ -24,16 +25,46 @@ interface SwipeCardProps {
   onSwipe: (direction: "left" | "right") => void;
   isTop: boolean;
   index: number;
+  /** Rekindle chat room id when one exists for this event */
   roomId?: string | null;
+  /** People currently in that in-app group chat */
+  roomMemberCount?: number;
   onOpenChat?: () => void;
 }
 
-const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCardProps) => {
+const SwipeCard = ({
+  event,
+  onSwipe,
+  isTop,
+  index,
+  roomId,
+  roomMemberCount = 0,
+  onOpenChat,
+}: SwipeCardProps) => {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 0, 300], [-18, 0, 18]);
   const opacity = useTransform(x, [-300, -100, 0, 100, 300], [0.5, 1, 1, 1, 0.5]);
   const likeOpacity = useTransform(x, [0, 80, 150], [0, 0.6, 1]);
   const nopeOpacity = useTransform(x, [-150, -80, 0], [1, 0.6, 0]);
+
+  const [stayPanelOpen, setStayPanelOpen] = useState(false);
+  const coarsePointerRef = useRef(false);
+  const cornerWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    coarsePointerRef.current = window.matchMedia("(pointer: coarse)").matches;
+  }, []);
+
+  useEffect(() => {
+    if (!stayPanelOpen || !coarsePointerRef.current) return;
+    const close = (e: PointerEvent) => {
+      if (cornerWrapRef.current && !cornerWrapRef.current.contains(e.target as Node)) {
+        setStayPanelOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [stayPanelOpen]);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const xVal = info.offset.x;
@@ -50,11 +81,26 @@ const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCa
     }
   };
 
+  const onCornerPointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+  }, []);
+
   const stackScale = Math.max(1 - index * 0.03, 0.9);
   const stackY = index * 12;
   const category = event.tags[0] ?? "";
-  const attendeeCount = event.attendees;
-  const avatarCount = Math.min(attendeeCount, 4);
+  const hasRoom = Boolean(roomId);
+  const avatarSlots = Math.min(roomMemberCount, 4);
+
+  const goingLabel =
+    roomMemberCount === 0
+      ? "0 going, no one's in the chat yet"
+      : `${roomMemberCount} going`;
+
+  const showChatActions = isTop;
+
+  /** Partiful-style pill on photo — always light chip + dark label (ignore global theme text color) */
+  const previewChatPillClass =
+    "font-body inline-flex shrink-0 items-center justify-center rounded-full border border-white/70 bg-white px-4 py-2 text-sm font-medium text-gray-950 shadow-[0_2px_14px_rgba(0,0,0,0.18)] transition hover:bg-white/95 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70";
 
   return (
     <motion.div
@@ -72,8 +118,7 @@ const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCa
       dragElastic={0.9}
       onDragEnd={isTop ? handleDragEnd : undefined}
     >
-      <div className="relative h-full w-full overflow-hidden rounded-2xl bg-card shadow-[0_12px_48px_rgba(232,71,10,0.08),0_4px_16px_rgba(0,0,0,0.06)] select-none">
-        {/* Full image */}
+      <div className="relative h-full w-full overflow-hidden rounded-2xl bg-card shadow-[0_4px_24px_rgba(0,0,0,0.10)] select-none">
         <img
           src={event.image}
           alt={event.title}
@@ -81,10 +126,8 @@ const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCa
           draggable={false}
         />
 
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/85" />
 
-        {/* LIKE indicator */}
         {isTop && (
           <motion.div
             className="absolute top-8 left-8 z-20 rounded-xl border-4 border-green-400 px-5 py-2 rotate-[-20deg]"
@@ -94,7 +137,6 @@ const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCa
           </motion.div>
         )}
 
-        {/* NOPE indicator */}
         {isTop && (
           <motion.div
             className="absolute top-8 right-8 z-20 rounded-xl border-4 border-red-400 px-5 py-2 rotate-[20deg]"
@@ -104,64 +146,113 @@ const SwipeCard = ({ event, onSwipe, isTop, index, roomId, onOpenChat }: SwipeCa
           </motion.div>
         )}
 
-        {/* Category chip — top right */}
         {category && (
-          <div className="absolute top-5 right-5 z-10">
+          <div className="absolute top-5 right-5 z-10 max-w-[calc(100%-5rem)]">
             <span className="px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm text-xs font-semibold text-gray-900 shadow-sm">
               {category}
             </span>
           </div>
         )}
 
-        {/* Bottom content */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 p-6 pb-7">
-          {/* Title */}
-          <h2 className="mb-3 font-display text-2xl font-bold text-white leading-tight sm:text-3xl"
-              style={{ textShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
+        <div className="absolute bottom-0 left-0 right-0 z-10 p-5 pb-6 sm:p-6 sm:pb-7">
+          <h2
+            className="mb-2 font-display text-2xl font-bold text-white leading-tight sm:text-3xl pr-2"
+            style={{ textShadow: "0 2px 12px rgba(0,0,0,0.3)" }}
+          >
             {event.title}
           </h2>
 
-          {/* Date + preview chat row */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-white/85 text-sm">
-              <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
-              <span>{event.date}</span>
+          <div className="flex items-center gap-1.5 text-white/85 text-sm mb-2">
+            <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>{event.date}</span>
+          </div>
+
+          <div className="flex items-start gap-1.5 text-white/75 text-sm mb-4">
+            <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <span className="leading-snug">{event.location}</span>
+          </div>
+
+          {/* Bottom row: subtle left status + corner preview */}
+          <div className="flex items-end justify-between gap-3 min-h-[2.5rem]">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex -space-x-2 shrink-0">
+                {avatarSlots > 0 ? (
+                  [...Array(avatarSlots)].map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-7 h-7 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} border-2 border-white/80 flex items-center justify-center text-white text-[10px] font-semibold`}
+                    >
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                  ))
+                ) : (
+                  <div className="w-7 h-7 rounded-full border-2 border-dashed border-white/40 bg-white/10" />
+                )}
+                {roomMemberCount > 4 && (
+                  <div className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/80 flex items-center justify-center text-white text-[9px] font-semibold">
+                    +{roomMemberCount - 4}
+                  </div>
+                )}
+              </div>
+              <span className="font-body text-white/90 text-xs sm:text-sm font-medium leading-snug">{goingLabel}</span>
             </div>
-            {isTop && roomId && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onOpenChat?.(); }}
-                className="flex items-center gap-1 text-white/80 text-xs font-semibold hover:text-white transition-colors"
+
+            {showChatActions && !hasRoom && (
+              <div
+                ref={cornerWrapRef}
+                className="relative shrink-0"
+                onPointerDown={onCornerPointerDown}
+                onMouseEnter={() => {
+                  if (!coarsePointerRef.current) setStayPanelOpen(true);
+                }}
+                onMouseLeave={() => {
+                  if (!coarsePointerRef.current) setStayPanelOpen(false);
+                }}
               >
-                <MessageCircle className="h-3 w-3" />
-                Preview event chat
-              </button>
-            )}
-          </div>
-
-          {/* Venue */}
-          <div className="flex items-center gap-1.5 text-white/75 text-sm mb-5">
-            <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-            <span>{event.location}</span>
-          </div>
-
-          {/* Attendee avatars + count */}
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {[...Array(avatarCount)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-7 h-7 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} border-2 border-white/80 flex items-center justify-center text-white text-[10px] font-semibold`}
+                <button
+                  type="button"
+                  aria-expanded={stayPanelOpen}
+                  aria-label="Preview chat — how Rekindle groups work"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (coarsePointerRef.current) setStayPanelOpen((v) => !v);
+                  }}
+                  className={previewChatPillClass}
                 >
-                  {String.fromCharCode(65 + i)}
+                  Preview chat
+                </button>
+
+                <div
+                  role="tooltip"
+                  className={`absolute bottom-full right-0 z-30 w-[min(288px,calc(100vw-4rem))] rounded-2xl border border-white/20 bg-black/85 px-4 py-3 text-left font-body shadow-2xl backdrop-blur-md transition-all duration-200 ${
+                    stayPanelOpen
+                      ? "visible translate-y-0 opacity-100 pointer-events-auto"
+                      : "invisible translate-y-1 opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-white">Stay tuned</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-white/80">
+                    More people like you will join — then the Rekindle group chat opens here. Swipe right to get it
+                    started.
+                  </p>
                 </div>
-              ))}
-              {attendeeCount > 4 && (
-                <div className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/80 flex items-center justify-center text-white text-[9px] font-semibold">
-                  +{attendeeCount - 4}
-                </div>
-              )}
-            </div>
-            <span className="text-white/80 text-sm font-medium">{attendeeCount} going</span>
+              </div>
+            )}
+
+            {showChatActions && hasRoom && (
+              <div className="shrink-0" onPointerDown={onCornerPointerDown}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenChat?.();
+                  }}
+                  className={previewChatPillClass}
+                >
+                  Preview chat
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

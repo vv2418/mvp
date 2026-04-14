@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Lock, Globe, CreditCard, Shield, Mail, MapPin, X, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { Bell, Lock, Globe, CreditCard, Shield, Mail, X, AlertTriangle, ChevronDown, Check, ArrowLeft } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
 import { useNavigate } from 'react-router-dom';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
@@ -8,6 +8,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useTheme } from '@/components/ThemeProvider';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { computeProfileCompleteness } from '@/lib/profileCompleteness';
+import { REKINDLE_LIKED_EVENTS_CHANGED, REKINDLE_PROFILE_UPDATED } from '@/lib/rekindle-events';
+import { CountUpValue } from '@/components/CountUpValue';
 
 export default function Settings() {
   useRequireAuth();
@@ -22,12 +26,18 @@ export default function Settings() {
   const [eventReminders, setEventReminders] = useState(true);
   const [chatMessages, setChatMessages] = useState(true);
   const [profileVisibility, setProfileVisibility] = useState('public');
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const visibilityRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (visibilityRef.current && !visibilityRef.current.contains(e.target as Node)) setVisibilityOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
   const [showLocation, setShowLocation] = useState(true);
 
   // ── Modal state (from Figma) ─────────────────────────────────────────────────
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [languageModalOpen, setLanguageModalOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -36,9 +46,62 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [location, setLocation] = useState('Brooklyn, NY');
   const [language, setLanguage] = useState('en-US');
   const [saving, setSaving] = useState(false);
+  const [accountEmail, setAccountEmail] = useState('');
+
+  const [accountSnapshot, setAccountSnapshot] = useState<{
+    accountType: string;
+    memberSinceLabel: string;
+    completeness: ReturnType<typeof computeProfileCompleteness>;
+  } | null>(null);
+
+  const refreshAccountSnapshot = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setAccountSnapshot(null);
+      return;
+    }
+    const tier = (user.user_metadata as { subscription_tier?: string } | undefined)?.subscription_tier;
+    const accountType = tier === 'premium' ? 'Premium' : 'Free';
+    setAccountEmail(user.email ?? '');
+    const [{ data: profile }, interestRes, likedRes] = await Promise.all([
+      supabase.from('profiles').select('name, avatar_url, bio, location, created_at').eq('id', user.id).maybeSingle(),
+      supabase.from('user_interests').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('swipes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('direction', 'right'),
+    ]);
+    const bio = profile?.bio ?? '';
+    const createdSrc = profile?.created_at || user.created_at;
+    const memberSince = createdSrc ? new Date(createdSrc) : new Date();
+    const memberSinceLabel = Number.isNaN(memberSince.getTime()) ? '—' : format(memberSince, 'MMM yyyy');
+    const completeness = computeProfileCompleteness({
+      displayName: profile?.name,
+      avatarUrl: profile?.avatar_url,
+      bio,
+      location: profile?.location ?? '',
+      interestCount: interestRes.count ?? 0,
+      likedEventCount: likedRes.count ?? 0,
+    });
+    setAccountSnapshot({ accountType, memberSinceLabel, completeness });
+  }, []);
+
+  useEffect(() => {
+    void refreshAccountSnapshot();
+  }, [refreshAccountSnapshot]);
+
+  useEffect(() => {
+    const onFocus = () => void refreshAccountSnapshot();
+    const onLikes = () => void refreshAccountSnapshot();
+    const onProfile = () => void refreshAccountSnapshot();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+    window.addEventListener(REKINDLE_PROFILE_UPDATED, onProfile);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+      window.removeEventListener(REKINDLE_PROFILE_UPDATED, onProfile);
+    };
+  }, [refreshAccountSnapshot]);
 
   // ── Real handlers (swapped in for Figma's alert() calls) ────────────────────
   const handlePushToggle = async () => {
@@ -103,7 +166,6 @@ export default function Settings() {
           onChange: setProfileVisibility,
           options: [
             { value: 'public', label: 'Public' },
-            { value: 'connections', label: 'Connections Only' },
             { value: 'private', label: 'Private' },
           ],
         },
@@ -113,9 +175,8 @@ export default function Settings() {
   ];
 
   const accountOptions = [
-    { icon: Mail, label: 'Email Address', value: 'your@email.com', action: 'Change', onClick: () => setEmailModalOpen(true) },
+    { icon: Mail, label: 'Email Address', value: accountEmail || '—', action: 'Change', onClick: () => setEmailModalOpen(true) },
     { icon: Lock, label: 'Password', value: '••••••••', action: 'Update', onClick: () => setPasswordModalOpen(true) },
-    { icon: MapPin, label: 'Location', value: location, action: 'Edit', onClick: () => setLocationModalOpen(true) },
     { icon: Globe, label: 'Language', value: language === 'en-US' ? 'English (US)' : language, action: 'Change', onClick: () => setLanguageModalOpen(true) },
   ];
 
@@ -124,9 +185,19 @@ export default function Settings() {
     <AppShell>
       <div className="flex flex-1 flex-col bg-background min-h-0 overflow-y-auto">
         <div className="max-w-[1400px] mx-auto px-12 py-8 w-full pb-24 lg:pb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
-            <h1 className="text-5xl mb-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Settings</h1>
-            <p className="text-lg text-muted-foreground">Manage your account and preferences</p>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12 flex items-start gap-3 sm:gap-4">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              aria-label="Go back"
+              className="mt-2 sm:mt-3 shrink-0 flex h-10 w-10 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.97]"
+            >
+              <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-5xl mb-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Settings</h1>
+              <p className="text-lg text-muted-foreground">Manage your account and preferences</p>
+            </div>
           </motion.div>
 
           <div className="grid grid-cols-3 gap-8">
@@ -134,7 +205,7 @@ export default function Settings() {
 
               {/* Account Settings */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                className="bg-white rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                     <Lock size={18} className="text-primary" />
@@ -164,7 +235,7 @@ export default function Settings() {
               {/* Notification + Privacy sections */}
               {settingsSections.map((section, sectionIndex) => (
                 <motion.div key={sectionIndex} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + sectionIndex * 0.1 }}
-                  className="bg-white rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                  className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                       <section.icon size={18} className="text-accent" />
@@ -179,12 +250,37 @@ export default function Settings() {
                           <div className="text-sm text-muted-foreground">{item.description}</div>
                         </div>
                         {(item as any).type === 'select' ? (
-                          <select value={item.value as string} onChange={e => (item.onChange as any)(e.target.value)}
-                            className="px-4 py-2 rounded-lg border border-border bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/20">
-                            {((item as any).options || []).map((opt: any) => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
+                          <div ref={visibilityRef} className="relative">
+                            <button
+                              onClick={() => setVisibilityOpen(v => !v)}
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors min-w-[168px] justify-between"
+                            >
+                              <span>{((item as any).options || []).find((o: any) => o.value === item.value)?.label ?? item.value}</span>
+                              <ChevronDown size={14} className={`transition-transform text-muted-foreground ${visibilityOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            <AnimatePresence>
+                              {visibilityOpen && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                                  transition={{ duration: 0.12 }}
+                                  className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-elevated overflow-hidden min-w-[168px]"
+                                >
+                                  {((item as any).options || []).map((opt: any) => (
+                                    <button
+                                      key={opt.value}
+                                      onClick={() => { (item.onChange as any)(opt.value); setVisibilityOpen(false); }}
+                                      className="flex items-center justify-between w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
+                                    >
+                                      {opt.label}
+                                      {item.value === opt.value && <Check size={14} className="text-accent" />}
+                                    </button>
+                                  ))}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         ) : (
                           <button onClick={() => (item as any).onChange()} disabled={(item as any).disabled}
                             className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-40 ${item.value ? 'bg-accent' : 'bg-muted'}`}>
@@ -199,7 +295,7 @@ export default function Settings() {
 
               {/* Appearance (theme toggle — not in original Figma but added) */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-                className="bg-white rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                     <Globe size={18} className="text-accent" />
@@ -212,15 +308,15 @@ export default function Settings() {
                     <div className="text-sm text-muted-foreground capitalize">{theme} mode</div>
                   </div>
                   <div className="flex items-center rounded-xl bg-muted p-1 gap-1">
-                    <button onClick={() => theme === 'dark' && toggleTheme()} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${theme === 'light' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Light</button>
-                    <button onClick={() => theme === 'light' && toggleTheme()} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${theme === 'dark' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Dark</button>
+                    <button onClick={() => theme === 'dark' && toggleTheme()} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${theme === 'light' ? 'bg-card border-border text-foreground shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Light</button>
+                    <button onClick={() => theme === 'light' && toggleTheme()} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${theme === 'dark' ? 'bg-card border-border text-foreground shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Dark</button>
                   </div>
                 </div>
               </motion.div>
 
               {/* Danger Zone */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-                className="bg-white rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)] border border-destructive/20">
+                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)] border border-destructive/20">
                 <h2 className="text-xl font-semibold mb-6 text-destructive" style={{ fontFamily: 'var(--font-heading)' }}>Danger Zone</h2>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/20">
@@ -237,14 +333,6 @@ export default function Settings() {
                     </div>
                     <button onClick={() => setDeleteDialogOpen(true)} className="px-4 py-2 rounded-lg text-sm font-medium bg-destructive text-white hover:bg-destructive/90 transition-colors">Delete</button>
                   </div>
-                  <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/20">
-                    <div>
-                      <div className="font-medium text-foreground mb-1">Sign Out</div>
-                      <div className="text-sm text-muted-foreground">Sign out of your account</div>
-                    </div>
-                    <button onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">Sign Out</button>
-                  </div>
                 </div>
               </motion.div>
             </div>
@@ -259,38 +347,62 @@ export default function Settings() {
                 <h3 className="text-lg font-semibold mb-2" style={{ fontFamily: 'var(--font-heading)' }}>Upgrade to Premium</h3>
                 <p className="text-sm text-white/90 mb-4">Unlock unlimited swipes, see who liked you, and get priority placement in group chats.</p>
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => toast.info('Premium coming soon! 🎉')}
                   className="w-full bg-white text-accent rounded-xl py-3 font-semibold hover:bg-white/90 transition-colors">
                   Upgrade Now
                 </motion.button>
               </motion.div>
 
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
-                className="bg-white rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                className="bg-card rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">Account Status</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">Account Type</div>
-                    <span className="text-sm font-medium text-foreground">Free</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">Member Since</div>
-                    <span className="text-sm font-medium text-foreground">Jan 2026</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">Profile Completeness</div>
-                    <span className="text-sm font-medium text-accent">85%</span>
-                  </div>
-                  <div className="pt-2">
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div className="bg-accent rounded-full h-2" style={{ width: '85%' }} />
+                {accountSnapshot ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">Account Type</div>
+                      <span className="text-sm font-medium text-foreground">{accountSnapshot.accountType}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">Add bio to reach 100%</p>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">Member Since</div>
+                      <span className="text-sm font-medium text-foreground">{accountSnapshot.memberSinceLabel}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">Profile Completeness</div>
+                      <span className="text-sm font-numeric text-accent tabular-nums">
+                        <CountUpValue value={accountSnapshot.completeness.percent} durationMs={900} />%
+                      </span>
+                    </div>
+                    <div className="pt-2">
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-accent rounded-full h-2 transition-all duration-500"
+                          style={{ width: `${accountSnapshot.completeness.percent}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {accountSnapshot.completeness.nextHint ?? 'Your profile is complete.'}
+                      </p>
+                    </div>
+                    <ul className="pt-2 space-y-2 border-t border-border/60">
+                      {accountSnapshot.completeness.items.map((it) => (
+                        <li key={it.id} className="flex items-start justify-between gap-2 text-xs">
+                          <span className={`text-left ${it.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                            {it.label}
+                          </span>
+                          <span className={`shrink-0 ${it.done ? 'text-accent font-semibold' : 'text-muted-foreground font-numeric'}`}>
+                            {it.done ? 'Done' : `${it.weight}%`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Loading account…</p>
+                )}
               </motion.div>
 
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}
-                className="bg-white rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                className="bg-card rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">Support</h3>
                 <div className="space-y-3">
                   {['Help Center', 'Privacy Policy', 'Terms of Service', 'Contact Support'].map(item => (
@@ -309,12 +421,12 @@ export default function Settings() {
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">New Email Address</label>
             <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="your.new.email@example.com"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20" />
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Confirm Password</label>
             <input type="password" placeholder="Enter your password"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20" />
           </div>
           <button onClick={handleChangeEmail} disabled={saving} className="w-full py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent/90 transition-colors disabled:opacity-50">
             {saving ? 'Sending…' : 'Update Email'}
@@ -328,35 +440,20 @@ export default function Settings() {
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Current Password</label>
             <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="Enter current password"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20" />
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">New Password</label>
             <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20" />
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Confirm New Password</label>
             <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm new password"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20" />
           </div>
           <button onClick={handleChangePassword} disabled={saving} className="w-full py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent/90 transition-colors disabled:opacity-50">
             {saving ? 'Updating…' : 'Update Password'}
-          </button>
-        </div>
-      </Modal>
-
-      {/* Location Modal — from Figma */}
-      <Modal isOpen={locationModalOpen} onClose={() => setLocationModalOpen(false)} title="Edit Location">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">City, State</label>
-            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Brooklyn, NY"
-              className="w-full px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/20" />
-          </div>
-          <button onClick={() => { toast.success('Location saved'); setLocationModalOpen(false); }}
-            className="w-full py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent/90 transition-colors">
-            Save Location
           </button>
         </div>
       </Modal>
@@ -409,7 +506,7 @@ function Modal({ isOpen, onClose, title, children }: { isOpen: boolean; onClose:
             onClick={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
+              className="bg-card rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-heading)' }}>{title}</h2>
                 <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"><X size={20} /></button>
@@ -436,7 +533,7 @@ function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmText
             onClick={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+              className="bg-card rounded-2xl shadow-2xl max-w-md w-full p-6">
               <div className="flex items-start gap-4 mb-6">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center ${confirmVariant === 'danger' ? 'bg-destructive/10' : 'bg-accent/10'}`}>
                   <AlertTriangle size={24} className={confirmVariant === 'danger' ? 'text-destructive' : 'text-accent'} />

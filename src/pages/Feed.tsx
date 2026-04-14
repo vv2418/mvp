@@ -7,12 +7,14 @@ import { fetchTicketmasterEvents } from "@/lib/ticketmaster";
 import { EventData } from "@/components/EventCard";
 import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
+import { REKINDLE_LIKED_EVENTS_CHANGED } from "@/lib/rekindle-events";
+import { CountUpValue } from "@/components/CountUpValue";
 import {
   Flame, X, Heart, Star, MapPin, Search, Bell, Settings,
-  TrendingUp, Sparkles, Users, MessageCircle, ChevronRight, Clock,
+  TrendingUp, Sparkles, Users, MessageCircle, ChevronRight, Clock, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const TAG_TO_INTEREST: Record<string, string> = {
@@ -79,6 +81,22 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+/** Local calendar date as YYYY-MM-DD (for matching Ticketmaster `startDateIso`). */
+function localDateIso(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function eventIsOnLocalDay(e: EventData, isoDay: string): boolean {
+  if (e.startDateIso) return e.startDateIso === isoDay;
+  if (!e.date || e.date === "TBA") return false;
+  const parsed = new Date(`${e.date}, ${new Date().getFullYear()}`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return localDateIso(parsed) === isoDay;
+}
+
 interface Notification {
   roomId: string;
   eventTitle: string;
@@ -96,6 +114,7 @@ interface RecentRoom {
 const Feed = () => {
   useRequireAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   useEffect(() => { trackEvent("onboarding_activation"); }, []);
 
   const userInterests: string[] = useMemo(() => {
@@ -116,6 +135,8 @@ const Feed = () => {
   // ── Core feed state ──────────────────────────────────────────────────────────
   const [swipeCounts, setSwipeCounts] = useState<Record<string, number>>({});
   const [events, setEvents] = useState<EventData[]>([]);
+  /** Full list for this location (not the shrinking swipe deck) — used for sidebar stats. */
+  const [catalogEvents, setCatalogEvents] = useState<EventData[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [needsCity, setNeedsCity] = useState(false);
   const [cityInput, setCityInput] = useState("");
@@ -124,13 +145,20 @@ const Feed = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [suggestions, setSuggestions] = useState<EventData[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [currentEventRoomId, setCurrentEventRoomId] = useState<string | null>(null);
+  type EventRoomStat = { roomId: string | null; memberCount: number };
+  const [roomStatsByEvent, setRoomStatsByEvent] = useState<Record<string, EventRoomStat>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<number | null>(null);
   const lastLocationRef = useRef<{ lat?: number; lng?: number; city?: string }>({});
   const swipedIdsRef = useRef<Set<string>>(new Set());
   const swipesLoadedRef = useRef(false);
+  const allEventsRef = useRef<EventData[]>([]);
+  const chatLiveToastGuardRef = useRef(false);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [activeDateFilter, setActiveDateFilter] = useState<'any' | 'today' | 'week' | 'month'>('any');
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
 
   // ── User / stats state ───────────────────────────────────────────────────────
   const [userName, setUserName] = useState("");
@@ -142,65 +170,141 @@ const Feed = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const [trendingModalOpen, setTrendingModalOpen] = useState(false);
+  const [recentSwipersCount, setRecentSwipersCount] = useState(0);
 
-  // ── Load user profile + stats ────────────────────────────────────────────────
-  useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Profile
-      const { data: profile } = await supabase.from("profiles").select("name, avatar_url").eq("id", user.id).maybeSingle();
-      const name = profile?.name || user.user_metadata?.name || "You";
-      setUserName(name);
-      setUserAvatar(profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
-
-      // Swipe count
-      const { count: sc } = await supabase.from("swipes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("direction", "right");
-      setSwipeCount(sc ?? 0);
-
-      // Rooms
-      const { data: myRooms } = await supabase.from("room_users").select("room_id").eq("user_id", user.id);
-      const roomIds = (myRooms || []).map((r) => r.room_id);
-      setRoomCount(roomIds.length);
-
-      if (roomIds.length > 0) {
-        // Recent rooms with other member name
-        const { data: rooms } = await supabase.from("rooms").select("id, event_title, created_at").in("id", roomIds).order("created_at", { ascending: false }).limit(3);
-        const withMembers = await Promise.all((rooms || []).map(async (room) => {
-          const { data: others } = await supabase.from("room_users").select("user_id").eq("room_id", room.id).neq("user_id", user.id).limit(1);
-          let otherMemberName: string | undefined;
-          if (others?.[0]) {
-            const { data: p } = await supabase.from("profiles").select("name").eq("id", others[0].user_id).maybeSingle();
-            otherMemberName = p?.name;
-          }
-          return { roomId: room.id, eventTitle: room.event_title || "Event", createdAt: room.created_at, otherMemberName };
-        }));
-        setRecentRooms(withMembers);
-
-        // Unread notifications
-        const notifs: Notification[] = [];
-        for (const membership of (myRooms || [])) {
-          const { data: roomData } = await supabase.from("rooms").select("event_title").eq("id", membership.room_id).maybeSingle();
-          const { data: ruData } = await (supabase.from("room_users") as unknown as { select: (c: string) => { eq: (a: string, b: string) => { eq: (a: string, b: string) => Promise<{ data: { last_read_at: string } | null }> } } })
-            .select("last_read_at").eq("room_id", membership.room_id).eq("user_id", user.id);
-          const lastRead = (ruData as unknown as { last_read_at: string } | null)?.last_read_at;
-          if (!lastRead) continue;
-          const { count, data: msgs } = await supabase.from("messages").select("id, created_at", { count: "exact" }).eq("room_id", membership.room_id).eq("is_ai", false).neq("user_id", user.id).gt("created_at", lastRead).order("created_at", { ascending: false }).limit(1);
-          if ((count ?? 0) > 0) {
-            notifs.push({
-              roomId: membership.room_id,
-              eventTitle: roomData?.event_title || "Event",
-              unreadCount: count ?? 1,
-              lastMessageAt: msgs?.[0]?.created_at || new Date().toISOString(),
-            });
-          }
-        }
-        setNotifications(notifs);
-      }
-    };
-    load();
+  const refreshPulseStats = useCallback(async () => {
+    const { data, error } = await supabase.rpc("get_discover_pulse_stats");
+    if (error || data == null) return;
+    const row = data as { recent_swipers?: number };
+    setRecentSwipersCount(Math.max(0, Number(row.recent_swipers) || 0));
   }, []);
+
+  const reloadDiscoverStats = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase.from("profiles").select("name, avatar_url").eq("id", user.id).maybeSingle();
+    const name = profile?.name || user.user_metadata?.name || "You";
+    setUserName(name);
+    setAvatarLoadFailed(false);
+    setUserAvatar(profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
+
+    const { count: sc } = await supabase.from("swipes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("direction", "right");
+    setSwipeCount(sc ?? 0);
+
+    const { data: myRooms } = await supabase.from("room_users").select("room_id").eq("user_id", user.id);
+    const membershipRoomIds = [...new Set((myRooms || []).map((r) => r.room_id))];
+
+    if (membershipRoomIds.length === 0) {
+      setRoomCount(0);
+      setRecentRooms([]);
+      setNotifications([]);
+      return;
+    }
+
+    const { data: roomRows } = await supabase
+      .from("rooms")
+      .select("id, event_id, event_title, created_at")
+      .in("id", membershipRoomIds)
+      .order("created_at", { ascending: false });
+
+    const byEvent = new Map<string, (typeof roomRows)[number]>();
+    for (const r of roomRows || []) {
+      const key = r.event_id || r.id;
+      const cur = byEvent.get(key);
+      if (!cur || r.created_at < cur.created_at) byEvent.set(key, r);
+    }
+    const uniqueRooms = [...byEvent.values()].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    const existingIds = new Set((roomRows || []).map((r) => r.id));
+
+    const canonicalRoomIds = uniqueRooms.map((r) => r.id);
+    let groupChatCount = 0;
+    if (canonicalRoomIds.length > 0) {
+      const { data: ruRows } = await supabase.from("room_users").select("room_id").in("room_id", canonicalRoomIds);
+      const perRoom = new Map<string, number>();
+      for (const row of ruRows || []) {
+        perRoom.set(row.room_id, (perRoom.get(row.room_id) ?? 0) + 1);
+      }
+      groupChatCount = canonicalRoomIds.filter((id) => (perRoom.get(id) ?? 0) >= 2).length;
+    }
+    setRoomCount(groupChatCount);
+
+    if (uniqueRooms.length === 0) {
+      setRecentRooms([]);
+      setNotifications([]);
+      return;
+    }
+
+    const recentSlice = uniqueRooms.slice(0, 3);
+    const withMembers = await Promise.all(
+      recentSlice.map(async (room) => {
+        const { data: others } = await supabase.from("room_users").select("user_id").eq("room_id", room.id).neq("user_id", user.id).limit(1);
+        let otherMemberName: string | undefined;
+        if (others?.[0]) {
+          const { data: p } = await supabase.from("profiles").select("name").eq("id", others[0].user_id).maybeSingle();
+          otherMemberName = p?.name;
+        }
+        return { roomId: room.id, eventTitle: room.event_title || "Event", createdAt: room.created_at, otherMemberName };
+      })
+    );
+    setRecentRooms(withMembers);
+
+    const notifsByEvent = new Map<string, Notification>();
+    for (const membership of myRooms || []) {
+      if (!existingIds.has(membership.room_id)) continue;
+      const { data: roomData } = await supabase
+        .from("rooms")
+        .select("event_title, event_id")
+        .eq("id", membership.room_id)
+        .maybeSingle();
+      const eventKey = roomData?.event_id || membership.room_id;
+      const { data: ruData } = await (supabase.from("room_users") as unknown as { select: (c: string) => { eq: (a: string, b: string) => { eq: (a: string, b: string) => Promise<{ data: { last_read_at: string } | null }> } } })
+        .select("last_read_at").eq("room_id", membership.room_id).eq("user_id", user.id);
+      const lastRead = (ruData as unknown as { last_read_at: string } | null)?.last_read_at;
+      if (!lastRead) continue;
+      const { count, data: msgs } = await supabase.from("messages").select("id, created_at", { count: "exact" }).eq("room_id", membership.room_id).eq("is_ai", false).neq("user_id", user.id).gt("created_at", lastRead).order("created_at", { ascending: false }).limit(1);
+      if ((count ?? 0) > 0) {
+        const unread = count ?? 1;
+        const lastAt = msgs?.[0]?.created_at || new Date().toISOString();
+        const prev = notifsByEvent.get(eventKey);
+        if (!prev) {
+          notifsByEvent.set(eventKey, {
+            roomId: membership.room_id,
+            eventTitle: roomData?.event_title || "Event",
+            unreadCount: unread,
+            lastMessageAt: lastAt,
+          });
+        } else {
+          notifsByEvent.set(eventKey, {
+            ...prev,
+            unreadCount: prev.unreadCount + unread,
+            lastMessageAt: lastAt > prev.lastMessageAt ? lastAt : prev.lastMessageAt,
+          });
+        }
+      }
+    }
+    setNotifications([...notifsByEvent.values()]);
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname !== "/feed") return;
+    void reloadDiscoverStats();
+  }, [location.pathname, reloadDiscoverStats]);
+
+  useEffect(() => {
+    if (location.pathname !== "/feed") return;
+    void refreshPulseStats();
+    const t = window.setInterval(() => void refreshPulseStats(), 45_000);
+    const onLikes = () => void refreshPulseStats();
+    window.addEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+    };
+  }, [location.pathname, refreshPulseStats]);
 
   // ── Load already-swiped events ───────────────────────────────────────────────
   useEffect(() => {
@@ -226,10 +330,18 @@ const Feed = () => {
       const tmEvents = await fetchTicketmasterEvents({ ...options, size: 20 });
       const finalEvents = tmEvents.length > 0 ? tmEvents : MOCK_EVENTS;
       for (const e of finalEvents) eventTitlesRef.current[e.id] = e.title;
+      allEventsRef.current = finalEvents;
+      setCatalogEvents(finalEvents);
+      const cats = [...new Set(finalEvents.flatMap(e => e.tags.slice(0, 1)).filter(Boolean))].slice(0, 8);
+      setAvailableCategories(cats);
       setEvents(filterSwiped(sortEvents(finalEvents)));
       setNeedsCity(false);
     } catch {
       for (const e of MOCK_EVENTS) eventTitlesRef.current[e.id] = e.title;
+      allEventsRef.current = MOCK_EVENTS;
+      setCatalogEvents(MOCK_EVENTS);
+      const cats = [...new Set(MOCK_EVENTS.flatMap(e => e.tags.slice(0, 1)).filter(Boolean))].slice(0, 8);
+      setAvailableCategories(cats);
       setEvents(filterSwiped(sortEvents(MOCK_EVENTS)));
     } finally { setLoadingEvents(false); }
   }, [sortEvents, filterSwiped]);
@@ -255,6 +367,31 @@ const Feed = () => {
     if (!city) return;
     loadEvents({ city });
   };
+
+  // ── Category / date filter ───────────────────────────────────────────────────
+  const applyFilters = useCallback((category: string, dateFilter: 'any' | 'today' | 'week' | 'month') => {
+    let filtered = allEventsRef.current;
+    if (category !== 'All') {
+      filtered = filtered.filter(e => e.tags.some(t => t === category));
+    }
+    if (dateFilter !== 'any') {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const rangeEnd = new Date(today);
+      if (dateFilter === 'today') rangeEnd.setDate(today.getDate() + 1);
+      else if (dateFilter === 'week') rangeEnd.setDate(today.getDate() + 7);
+      else if (dateFilter === 'month') rangeEnd.setDate(today.getDate() + 30);
+      filtered = filtered.filter(e => {
+        if (!e.date || e.date === 'TBA') return false;
+        const d = new Date(`${e.date}, ${new Date().getFullYear()}`);
+        return !isNaN(d.getTime()) && d >= today && d < rangeEnd;
+      });
+    }
+    setEvents(filterSwiped(sortEvents(filtered)));
+  }, [filterSwiped, sortEvents]);
+
+  useEffect(() => {
+    if (!loadingEvents) applyFilters(activeCategory, activeDateFilter);
+  }, [activeCategory, activeDateFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Search autocomplete ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -297,12 +434,66 @@ const Feed = () => {
     })();
   }, []);
 
+  const loadRoomStatsForIds = useCallback(async (eventIds: string[]) => {
+    const uniq = [...new Set(eventIds.filter(Boolean))];
+    if (uniq.length === 0) return;
+
+    const { data: rooms, error } = await supabase.from("rooms").select("id, event_id").in("event_id", uniq);
+    if (error) return;
+
+    const list = rooms || [];
+    const roomIds = list.map((r) => r.id);
+    const roomIdByEvent = new Map(list.map((r) => [r.event_id, r.id]));
+
+    const counts = new Map<string, number>();
+    if (roomIds.length > 0) {
+      const { data: ru } = await supabase.from("room_users").select("room_id").in("room_id", roomIds);
+      for (const row of ru || []) {
+        counts.set(row.room_id, (counts.get(row.room_id) ?? 0) + 1);
+      }
+    }
+
+    setRoomStatsByEvent((prev) => {
+      const next = { ...prev };
+      for (const eid of uniq) {
+        const rid = roomIdByEvent.get(eid);
+        if (!rid) next[eid] = { roomId: null, memberCount: 0 };
+        else next[eid] = { roomId: rid, memberCount: counts.get(rid) ?? 0 };
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const ids = [...new Set([...catalogEvents.map((e) => e.id), ...events.map((e) => e.id)])];
+    void loadRoomStatsForIds(ids);
+  }, [catalogEvents, events, loadRoomStatsForIds]);
+
+  useEffect(() => {
+    if (location.pathname !== "/feed") return;
+    const refresh = () => {
+      void reloadDiscoverStats();
+      void loadRoomStatsForIds(allEventsRef.current.map((e) => e.id));
+    };
+    const onLikes = () => refresh();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener(REKINDLE_LIKED_EVENTS_CHANGED, onLikes);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [location.pathname, reloadDiscoverStats, loadRoomStatsForIds]);
+
   // ── Swipe handler ────────────────────────────────────────────────────────────
   const handleSwipe = useCallback(async (direction: "left" | "right") => {
     const event = events[0];
     if (!event) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { toast.error("Please sign in first"); return; }
+    const priorRoomId = roomStatsByEvent[event.id]?.roomId ?? null;
     const { error } = await supabase.from("swipes").insert({ user_id: user.id, event_id: event.id, direction });
     if (error && error.code !== "23505") { toast.error("Something went wrong"); return; }
     swipedIdsRef.current.add(event.id);
@@ -313,18 +504,33 @@ const Feed = () => {
         toast.success(`You're interested in "${event.title}" ❤️`);
         setSwipeCount((c) => c + 1);
         setSwipeCounts((prev) => ({ ...prev, [event.id]: (prev[event.id] || 0) + 1 }));
-        try {
-          const liked = JSON.parse(localStorage.getItem("rekindle_liked_events") || "[]");
-          if (!liked.some((e: { id: string }) => e.id === event.id)) {
-            liked.push({ id: event.id, title: event.title, date: event.date, location: event.location, image: event.image });
-            localStorage.setItem("rekindle_liked_events", JSON.stringify(liked));
+        void refreshPulseStats();
+
+        chatLiveToastGuardRef.current = false;
+        const tryChatCreatedToast = async () => {
+          if (chatLiveToastGuardRef.current) return;
+          const { data: room } = await supabase.from("rooms").select("id").eq("event_id", event.id).maybeSingle();
+          const refreshIds = [...new Set([event.id, ...events.slice(1, 4).map((e) => e.id)])];
+          await loadRoomStatsForIds(refreshIds);
+          if (room?.id && !priorRoomId) {
+            chatLiveToastGuardRef.current = true;
+            toast.success(`Your Rekindle group chat for "${event.title}" is live — open Preview chat to peek in.`);
           }
-        } catch { /* ignore */ }
+        };
+        window.setTimeout(() => void tryChatCreatedToast(), 2000);
+        window.setTimeout(() => void tryChatCreatedToast(), 6000);
       }
-      supabase.functions.invoke("matchmaking", { body: { event_titles: eventTitlesRef.current } }).catch(() => {});
+      window.dispatchEvent(new CustomEvent(REKINDLE_LIKED_EVENTS_CHANGED));
+      supabase.functions
+        .invoke("matchmaking", { body: { event_titles: eventTitlesRef.current } })
+        .catch(() => {})
+        .finally(() => {
+          window.setTimeout(() => void reloadDiscoverStats(), 1500);
+          window.setTimeout(() => void reloadDiscoverStats(), 5000);
+        });
     }
     setEvents((prev) => prev.slice(1));
-  }, [events]);
+  }, [events, reloadDiscoverStats, refreshPulseStats, roomStatsByEvent, loadRoomStatsForIds]);
 
   const triggerSwipe = useCallback((direction: "left" | "right") => handleSwipe(direction), [handleSwipe]);
 
@@ -344,14 +550,6 @@ const Feed = () => {
     } catch { /* ignore */ }
   }, [events]);
 
-  // ── Room check for top card ──────────────────────────────────────────────────
-  useEffect(() => {
-    const event = events[0];
-    if (!event) { setCurrentEventRoomId(null); return; }
-    supabase.from("rooms").select("id").eq("event_id", event.id).maybeSingle()
-      .then(({ data }) => setCurrentEventRoomId(data?.id ?? null));
-  }, [events]);
-
   // ── Close notif panel on outside click ──────────────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -362,33 +560,60 @@ const Feed = () => {
   }, []);
 
   // ── Derived data ─────────────────────────────────────────────────────────────
-  const popularEvent = useMemo(() => {
-    if (events.length === 0) return null;
-    return [...events].sort((a, b) => (swipeCounts[b.id] || b.attendees) - (swipeCounts[a.id] || a.attendees))[0];
-  }, [events, swipeCounts]);
+  const catalogSortedByHeat = useMemo(() => {
+    const pool = catalogEvents.length > 0 ? catalogEvents : events;
+    const heat = (id: string) =>
+      (swipeCounts[id] ?? 0) + (roomStatsByEvent[id]?.memberCount ?? 0) * 2;
+    return [...pool].sort((a, b) => heat(b.id) - heat(a.id));
+  }, [catalogEvents, events, swipeCounts, roomStatsByEvent]);
 
-  const trendingEvents = useMemo(() => {
-    return events.slice(1, 10)
-      .sort((a, b) => (swipeCounts[b.id] || b.attendees) - (swipeCounts[a.id] || a.attendees))
+  const popularEvent = useMemo(() => catalogSortedByHeat[0] ?? null, [catalogSortedByHeat]);
+
+  const trendingEvents = useMemo(() => catalogSortedByHeat.slice(1, 4), [catalogSortedByHeat]);
+
+  const eventsTodayCount = useMemo(() => {
+    const today = localDateIso();
+    return catalogEvents.filter((e) => eventIsOnLocalDay(e, today)).length;
+  }, [catalogEvents]);
+
+  const nearYouCount = catalogEvents.length;
+
+  /** Top primary tags in the current catalog by total right-swipes (global) + catalog presence. */
+  const trendingTagRows = useMemo(() => {
+    const scores = new Map<string, number>();
+    for (const e of catalogEvents) {
+      const tag = e.tags[0] || "Events";
+      const sw = swipeCounts[e.id] ?? 0;
+      scores.set(tag, (scores.get(tag) ?? 0) + sw + 1);
+    }
+    const rows = [...scores.entries()]
+      .map(([label, score]) => ({ label, score }))
+      .sort((a, b) => b.score - a.score)
       .slice(0, 3);
-  }, [events, swipeCounts]);
+    const max = rows[0]?.score ?? 1;
+    return rows.map((r) => ({ ...r, barPct: Math.max(8, Math.round((r.score / max) * 100)) }));
+  }, [catalogEvents, swipeCounts]);
+
+  const avatarFallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userName || "You"}`;
+  const profileAvatarSrc = !avatarLoadFailed && userAvatar ? userAvatar : avatarFallback;
 
   return (
     <AppShell>
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto bg-background px-4 lg:px-8 pt-4 pb-24 lg:pb-8">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-background px-4 lg:px-16 pt-4 lg:pt-10 pb-24 lg:pb-10">
+          <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0">
 
           {/* ── Header ────────────────────────────────────────────────────────── */}
           <div className="flex items-start justify-between mb-8 flex-shrink-0">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="font-display text-5xl lg:text-6xl font-bold tracking-tight">Discover</h1>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-semibold">
-                  <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <div className="flex items-end gap-3 mb-4">
+                <h1 className="text-5xl leading-none" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Discover</h1>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent text-sm font-semibold mb-0.5">
+                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                   Live
                 </div>
               </div>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                Swipe on events you love. Match with people who feel the same.<br />
+              <p className="text-base text-muted-foreground">
+                Swipe on events you love. Match with people who feel the same.
                 Start conversations before you arrive.
               </p>
             </motion.div>
@@ -408,8 +633,8 @@ const Feed = () => {
                 >
                   <Bell className="h-5 w-5 text-muted-foreground" />
                   {notifications.length > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-accent rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1">
-                      {notifications.length}
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-accent rounded-full flex items-center justify-center text-white text-[10px] font-numeric px-1 tabular-nums">
+                      <CountUpValue value={notifications.length} durationMs={600} />
                     </span>
                   )}
                 </button>
@@ -470,17 +695,22 @@ const Feed = () => {
                 onClick={() => navigate("/profile")}
                 className="flex items-center gap-2.5 pl-1.5 pr-5 py-1.5 rounded-full bg-card border border-border hover:border-foreground/20 transition-all shadow-sm"
               >
-                <img src={userAvatar} alt={userName} className="w-10 h-10 rounded-full object-cover bg-secondary" />
+                <img
+                  src={profileAvatarSrc}
+                  alt={userName}
+                  onError={() => setAvatarLoadFailed(true)}
+                  className="w-10 h-10 rounded-full object-cover bg-secondary"
+                />
                 <span className="text-sm font-semibold text-foreground">{userName || "You"}</span>
               </button>
             </motion.div>
           </div>
 
           {/* ── Main 2-column layout ───────────────────────────────────────────── */}
-          <div className="flex gap-6 lg:gap-8 items-start">
+          <div className="flex gap-8 lg:gap-12 flex-1 min-h-0">
 
             {/* ── Left column: search + card + buttons ────────────────────────── */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 max-w-lg flex flex-col min-h-0">
 
               {/* Always-visible search bar — matches card width */}
               <div className="relative mb-3">
@@ -533,6 +763,40 @@ const Feed = () => {
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* ── Filter chips ─────────────────────────────────────────────── */}
+              {!loadingEvents && !needsCity && (
+                <div className="flex gap-1.5 mb-3 overflow-x-auto scrollbar-none flex-shrink-0 pb-0.5">
+                  {(['any', 'today', 'week', 'month'] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setActiveDateFilter(f)}
+                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                        activeDateFilter === f
+                          ? 'bg-accent border-accent text-white'
+                          : 'bg-card border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {f === 'any' ? 'Any time' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
+                    </button>
+                  ))}
+                  {availableCategories.length > 0 && <div className="w-px bg-border flex-shrink-0 mx-0.5 self-stretch" />}
+                  {['All', ...availableCategories].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                        activeCategory === cat
+                          ? 'bg-foreground border-foreground text-background'
+                          : 'bg-card border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {loadingEvents ? (
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-full rounded-2xl bg-secondary animate-pulse" style={{ height: "min(58vh, 560px)" }} />
@@ -577,17 +841,24 @@ const Feed = () => {
                   <div className="relative w-full" style={{ height: "min(58vh, 560px)" }}>
                     <div className="absolute inset-0">
                       <AnimatePresence>
-                        {events.slice(0, 3).map((event, i) => (
+                        {events.slice(0, 3).map((event, i) => {
+                          const stat = roomStatsByEvent[event.id];
+                          return (
                           <SwipeCard
                             key={event.id}
-                            event={{ ...event, attendees: swipeCounts[event.id] || event.attendees }}
+                            event={event}
                             onSwipe={handleSwipe}
                             isTop={i === 0}
                             index={i}
-                            roomId={i === 0 ? currentEventRoomId : null}
-                            onOpenChat={() => currentEventRoomId && navigate(`/chat/${currentEventRoomId}`)}
+                            roomId={stat?.roomId ?? null}
+                            roomMemberCount={stat?.memberCount ?? 0}
+                            onOpenChat={() => {
+                              const rid = stat?.roomId;
+                              if (rid) navigate(`/chat/${rid}?preview=1`);
+                            }}
                           />
-                        ))}
+                          );
+                        })}
                       </AnimatePresence>
                     </div>
                   </div>
@@ -634,145 +905,166 @@ const Feed = () => {
               )}
             </div>
 
-            {/* ── Right column: Stats panel (desktop only) ─────────────────────── */}
+            {/* ── Right column (desktop only) ───────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.3 }}
-              className="hidden lg:flex flex-col gap-4 w-80 xl:w-96 flex-shrink-0 sticky top-4"
+              className="hidden lg:flex flex-col gap-4 flex-1 min-w-0 min-h-0"
             >
-              {/* Your Activity */}
-              <div className="bg-card rounded-2xl p-5 border border-border/50 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                    <Sparkles className="h-4 w-4 text-accent" />
+            <div className="grid grid-cols-2 gap-4 flex-1" style={{ gridAutoRows: '1fr' }}>
+
+              {/* ── Card 1: Active Now ── */}
+              <div className="bg-card rounded-2xl p-5 shadow-[0_4px_16px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Active Now</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs text-green-600 font-semibold">Live</span>
                   </div>
-                  <span className="text-sm font-medium text-muted-foreground">Your Activity</span>
                 </div>
-                <div className="space-y-4">
+                {/* Hero number */}
+                <div className="flex-1 flex flex-col justify-center">
+                  <p className="text-5xl font-numeric text-foreground leading-none"><CountUpValue value={recentSwipersCount} /></p>
+                  <p className="text-sm text-muted-foreground mt-1">people liked an event recently</p>
+                  <p className="text-[11px] text-muted-foreground/80 mt-0.5">Unique accounts, last ~45 minutes</p>
+                </div>
+                {/* Mini stats row */}
+                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border">
                   <div>
-                    <p className="font-display text-3xl font-semibold text-foreground">{swipeCount}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Events liked</p>
+                    <p className="text-xl font-numeric text-foreground"><CountUpValue value={eventsTodayCount} durationMs={700} /></p>
+                    <p className="text-[11px] text-muted-foreground">events today</p>
                   </div>
-                  <div className="h-px bg-border" />
                   <div>
-                    <p className="font-display text-3xl font-semibold text-foreground">{roomCount}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Active group chats</p>
+                    <p className="text-xl font-numeric text-foreground"><CountUpValue value={nearYouCount} durationMs={700} /></p>
+                    <p className="text-[11px] text-muted-foreground">in this area</p>
                   </div>
                 </div>
               </div>
 
-              {/* Popular Right Now */}
-              {popularEvent && (
-                <div className="bg-gradient-to-br from-accent to-orange-600 rounded-2xl p-5 text-white shadow-[0_8px_32px_rgba(232,71,10,0.2)]">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-                      <Users className="h-3.5 w-3.5 text-white" />
-                    </div>
-                    <span className="text-xs font-semibold text-white/90">Popular Right Now</span>
+              {/* ── Card 2: Trending ── */}
+              <div className="bg-gradient-to-br from-accent to-orange-600 rounded-2xl p-5 text-white shadow-[0_8px_32px_rgba(232,71,10,0.2)] flex flex-col justify-between">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="h-4 w-4 text-white/80" />
+                  <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">Trending</span>
+                </div>
+                <div className="flex-1 flex flex-col justify-center gap-3">
+                  {trendingTagRows.length > 0 ? (
+                    trendingTagRows.map((cat) => (
+                      <div key={cat.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-white">{cat.label}</span>
+                          <span className="text-xs font-numeric bg-white/20 px-2 py-0.5 rounded-full tabular-nums">
+                            {cat.score} pts
+                          </span>
+                        </div>
+                        <div className="h-1 bg-white/20 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-white/60 rounded-full transition-all"
+                            style={{ width: `${cat.barPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/75">Load events to see category buzz from likes in your area.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Card 3: Your Activity ── */}
+              <div className="bg-card rounded-2xl p-5 shadow-[0_4px_16px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your Activity</span>
+                </div>
+                <div className="flex-1 grid grid-cols-2 gap-3 items-center">
+                  <div className="flex flex-col items-center justify-center bg-accent/5 rounded-xl py-3 px-2">
+                    <p className="text-4xl font-numeric text-accent leading-none"><CountUpValue value={swipeCount} /></p>
+                    <p className="text-[11px] text-muted-foreground mt-1.5 text-center">events liked</p>
                   </div>
-                  <p className="font-display text-lg font-semibold mb-1 leading-tight">{popularEvent.title}</p>
-                  <p className="text-sm text-white/75 mb-4">{swipeCounts[popularEvent.id] || popularEvent.attendees} people going</p>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => handleSelectSuggestion(popularEvent)}
-                    className="w-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-colors rounded-xl py-2.5 text-sm font-semibold"
-                  >
-                    View Event
-                  </motion.button>
+                  <div className="flex flex-col items-center justify-center bg-muted/60 rounded-xl py-3 px-2">
+                    <p className="text-4xl font-numeric text-foreground leading-none"><CountUpValue value={roomCount} /></p>
+                    <p className="text-[11px] text-muted-foreground mt-1.5 text-center">group chats</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Card 4: Popular Now / Empty ── */}
+              {popularEvent ? (
+                <div className="relative rounded-2xl overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.08)] flex flex-col">
+                  {/* event image as background */}
+                  <img src={popularEvent.image} alt={popularEvent.title} className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/20" />
+                  <div className="relative z-10 flex flex-col justify-end h-full p-5">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Users className="h-3.5 w-3.5 text-white/80" />
+                      <span className="text-xs text-white/80 font-medium uppercase tracking-wide">Popular Now</span>
+                    </div>
+                    <p className="text-base font-bold text-white leading-tight mb-1">{popularEvent.title}</p>
+                    <p className="text-xs text-white/70 mb-3">
+                      {(roomStatsByEvent[popularEvent.id]?.memberCount ?? 0) === 0
+                        ? "No one from Rekindle in the chat yet"
+                        : `${roomStatsByEvent[popularEvent.id]?.memberCount} from Rekindle in chat`}
+                    </p>
+                    <button onClick={() => handleSelectSuggestion(popularEvent)}
+                      className="w-full bg-card/95 text-foreground border border-border/70 rounded-xl py-2 text-xs font-bold hover:bg-card transition-colors">
+                      View Event
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-card rounded-2xl p-5 shadow-[0_4px_16px_rgba(0,0,0,0.04)] flex flex-col items-center justify-center text-center gap-2">
+                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                    <MessageCircle className="h-6 w-6 text-accent" />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">No matches yet</p>
+                  <p className="text-xs text-muted-foreground">Swipe right to get matched into group chats</p>
                 </div>
               )}
+            </div>{/* end 2x2 grid */}
 
-              {/* Recent Matches */}
-              {recentRooms.length > 0 && (
-                <div className="bg-card rounded-2xl p-5 border border-border/50 shadow-sm">
-                  <h3 className="text-sm font-semibold text-foreground mb-4">Recent Matches</h3>
-                  <div className="space-y-3">
-                    {recentRooms.map((room) => (
-                      <button
-                        key={room.roomId}
-                        onClick={() => navigate(`/chat/${room.roomId}`)}
-                        className="flex items-center gap-3 w-full text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white font-semibold text-sm shrink-0">
-                          {room.otherMemberName ? room.otherMemberName[0].toUpperCase() : room.eventTitle[0].toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate group-hover:text-accent transition-colors">
-                            {room.otherMemberName || "Matched!"}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">{room.eventTitle}</p>
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">{timeAgo(room.createdAt)}</span>
-                      </button>
-                    ))}
+            {/* ── Trending This Week — inside right column ─────────────────── */}
+            {trendingEvents.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-accent" />
+                    <span className="text-sm font-semibold text-foreground">Trending This Week</span>
                   </div>
-                  <button
-                    onClick={() => navigate("/rooms")}
-                    className="mt-4 w-full text-xs font-semibold text-accent hover:text-accent/80 transition-colors text-center"
-                  >
-                    View all chats →
+                  <button onClick={() => setTrendingModalOpen(true)} className="text-xs font-semibold text-accent hover:text-accent/80 transition-colors">
+                    View All →
                   </button>
                 </div>
-              )}
-
-              {/* Empty state for new users */}
-              {recentRooms.length === 0 && roomCount === 0 && !loadingEvents && (
-                <div className="bg-card rounded-2xl p-5 border border-border/50 shadow-sm text-center">
-                  <MessageCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-medium text-foreground mb-1">No matches yet</p>
-                  <p className="text-xs text-muted-foreground">Swipe on events to get matched with people going to the same thing</p>
+                <div className="grid grid-cols-3 gap-4">
+                  {trendingEvents.map((event, i) => (
+                    <motion.button
+                      key={event.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.45 + i * 0.06 }}
+                      whileHover={{ y: -2 }}
+                      onClick={() => handleSelectSuggestion(event)}
+                      className="flex items-center gap-3 bg-card rounded-2xl p-4 border border-border/50 hover:border-border hover:shadow-sm transition-all text-left group"
+                    >
+                      <img src={event.image} alt={event.title} className="w-14 h-14 rounded-xl object-cover bg-secondary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate group-hover:text-accent transition-colors">{event.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{event.date}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(roomStatsByEvent[event.id]?.memberCount ?? 0) === 0
+                            ? "No Rekindle chat yet"
+                            : `${roomStatsByEvent[event.id]?.memberCount} in Rekindle chat`}
+                        </p>
+                      </div>
+                    </motion.button>
+                  ))}
                 </div>
-              )}
-            </motion.div>
-          </div>
-
-          {/* ── Trending This Week — full-width strip below both columns ──────── */}
-          {trendingEvents.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="flex-shrink-0 mt-4 hidden lg:block"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-accent" />
-                  <span className="text-sm font-semibold text-foreground">Trending This Week</span>
-                </div>
-                <button
-                  onClick={() => setTrendingModalOpen(true)}
-                  className="text-xs font-semibold text-accent hover:text-accent/80 transition-colors"
-                >
-                  View All →
-                </button>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                {trendingEvents.map((event, i) => (
-                  <motion.button
-                    key={event.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.45 + i * 0.06 }}
-                    whileHover={{ y: -2 }}
-                    onClick={() => handleSelectSuggestion(event)}
-                    className="flex items-center gap-3 bg-card rounded-2xl p-4 border border-border/50 hover:border-border hover:shadow-sm transition-all text-left group"
-                  >
-                    <img
-                      src={event.image}
-                      alt={event.title}
-                      className="w-14 h-14 rounded-xl object-cover bg-secondary shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate group-hover:text-accent transition-colors">{event.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">{event.date}</p>
-                      <p className="text-xs text-muted-foreground">{swipeCounts[event.id] || event.attendees} going</p>
-                    </div>
-                  </motion.button>
-                ))}
-              </div>
-            </motion.div>
-          )}
+            )}
+            </motion.div>{/* end right column */}
+          </div>{/* end 2-col layout */}
+          </div>{/* end max-w wrapper */}
       </div>
 
       {/* ── Trending Events Modal ─────────────────────────────────────────── */}
@@ -829,7 +1121,9 @@ const Feed = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           <Users className="h-3.5 w-3.5" />
-                          {swipeCounts[event.id] || event.attendees} going
+                          {(roomStatsByEvent[event.id]?.memberCount ?? 0) === 0
+                            ? "No Rekindle chat yet"
+                            : `${roomStatsByEvent[event.id]?.memberCount} in Rekindle chat`}
                         </div>
                       </div>
                       <button
