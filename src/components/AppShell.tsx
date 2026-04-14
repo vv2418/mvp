@@ -60,8 +60,25 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    let userId: string | null = null;
+
+    const checkUnread = async (uid: string) => {
+      const { data: memberships } = await (supabase.from("room_users") as any)
+        .select("room_id, last_read_at")
+        .eq("user_id", uid) as { data: Array<{ room_id: string; last_read_at: string }> | null };
+      if (!memberships?.length) return;
+      const checks = memberships.map(({ room_id, last_read_at }) =>
+        supabase.from("messages").select("id", { count: "exact", head: true })
+          .eq("room_id", room_id).eq("is_ai", false).neq("user_id", uid).gt("created_at", last_read_at)
+          .then(({ count }) => (count ?? 0) > 0)
+      );
+      const results = await Promise.all(checks);
+      setHasUnread(results.some(Boolean));
+    };
+
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+      userId = user.id;
       const name = user.user_metadata?.name || "You";
       setUserName(name);
       setUserAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
@@ -69,21 +86,17 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
         if (data?.name) setUserName(data.name);
         if (data?.avatar_url) setUserAvatar(data.avatar_url);
       });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from("room_users") as any)
-        .select("room_id, last_read_at")
-        .eq("user_id", user.id)
-        .then(({ data: memberships }: { data: Array<{ room_id: string; last_read_at: string }> | null }) => {
-          if (!memberships?.length) return;
-          const checks = memberships.map(({ room_id, last_read_at }) =>
-            supabase.from("messages").select("id", { count: "exact", head: true })
-              .eq("room_id", room_id).eq("is_ai", false).neq("user_id", user.id).gt("created_at", last_read_at)
-              .then(({ count }) => (count ?? 0) > 0)
-          );
-          Promise.all(checks).then((results) => setHasUnread(results.some(Boolean)));
-        });
+      void checkUnread(user.id);
     });
+
+    const channel = supabase
+      .channel("appshell-messages")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+        if (userId) void checkUnread(userId);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {

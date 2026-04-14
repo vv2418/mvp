@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { ArrowLeft, Sparkles, Loader2, MessageCircle } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { CountUpValue } from "@/components/CountUpValue";
 import AppShell from "@/components/AppShell";
 import MemberProfileSheet from "@/components/MemberProfileSheet";
@@ -460,18 +460,15 @@ const Chat = () => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8 shrink-0"
           >
-            <button
-              type="button"
-              onClick={() => navigate("/rooms")}
-              className="mb-6 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-            >
-              <ArrowLeft className="h-4 w-4" strokeWidth={2} />
-              Back
-            </button>
             <div className="flex items-start gap-3 sm:gap-4">
-              <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 sm:mt-2">
-                <MessageCircle className="h-5 w-5 text-accent" />
-              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/rooms")}
+                aria-label="Go back"
+                className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.97] sm:mt-2"
+              >
+                <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2} />
+              </button>
               <div className="min-w-0 flex-1">
                 <h1
                   className="line-clamp-2 text-2xl font-semibold leading-tight sm:text-3xl lg:text-4xl"
