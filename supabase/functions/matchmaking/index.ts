@@ -98,8 +98,14 @@ Deno.serve(async (req) => {
       if (!ins.error) roomsCreated++;
       usersAdded += members.length;
 
-      // Notify all matched members via email (fire-and-forget)
       const eventTitle = eventTitles[eventId] || `Event ${eventId}`;
+
+      // Seed AI icebreaker so the unread badge lights up immediately
+      supabase.functions.invoke("chat-ai", {
+        body: { room_id: room.id, event_title: eventTitle, mode: "icebreaker" },
+      }).catch(() => {});
+
+      // Notify all matched members (push / email)
       for (const member of members) {
         supabase.functions.invoke("send-notification", {
           body: {
@@ -143,8 +149,13 @@ Deno.serve(async (req) => {
         await supabase.from("room_users").insert(newMembers);
         usersAdded += newMembers.length;
 
-        // Notify new members + existing members about the new addition
         const eventTitle = eventTitles[eventId] || room.event_title || `Event ${eventId}`;
+
+        // Seed a "someone new joined" AI nudge so existing members see the unread dot
+        supabase.functions.invoke("chat-ai", {
+          body: { room_id: room.id, event_title: eventTitle, mode: "revive" },
+        }).catch(() => {});
+
         for (const newMember of newMembers) {
           // Tell existing members someone joined
           for (const existingId of Array.from(memberIds)) {
