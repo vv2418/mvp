@@ -23,6 +23,33 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+/**
+ * After any sign-in (OAuth callback, password sign-in, etc.), route the user
+ * to the interests onboarding if they have not picked any interests yet.
+ * Returning users with interests go straight to /feed.
+ */
+async function routePostSignIn(currentPath: string, navigate: (to: string, opts?: { replace?: boolean }) => void) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { count } = await supabase
+    .from("user_interests")
+    .select("interest_id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  const needsOnboarding = (count ?? 0) === 0;
+
+  if (currentPath === "/" || currentPath === "/signup") {
+    navigate(needsOnboarding ? "/interests" : "/feed", { replace: true });
+    return;
+  }
+
+  // OAuth providers redirect back to /feed by default — catch new users here.
+  if (needsOnboarding && currentPath !== "/interests") {
+    navigate("/interests", { replace: true });
+  }
+}
+
 function AuthRedirectHandler() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,8 +64,8 @@ function AuthRedirectHandler() {
         ensureProfile(user).catch(() => {});
       });
 
-      if (event === "SIGNED_IN" && (location.pathname === "/" || location.pathname === "/signup")) {
-        navigate("/feed", { replace: true });
+      if (event === "SIGNED_IN") {
+        void routePostSignIn(location.pathname, navigate);
       }
     });
     return () => subscription.unsubscribe();
