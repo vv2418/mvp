@@ -6,7 +6,7 @@ import {
   PanInfo,
 } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Calendar, MapPin } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Ticket } from "lucide-react";
 import { EventData } from "@/components/EventCard";
 
 const SWIPE_THRESHOLD = 100;
@@ -30,6 +30,14 @@ interface SwipeCardProps {
   /** People currently in that in-app group chat */
   roomMemberCount?: number;
   onOpenChat?: () => void;
+  /** Triggered when the user taps the "Get tickets" pill on the card. */
+  onOpenExternalLink?: (event: EventData) => void;
+}
+
+function ticketLabel(event: EventData): string {
+  if (event.source === "ticketmaster") return "Tickets · Ticketmaster";
+  if (event.source === "eventbrite") return "Tickets · Eventbrite";
+  return "Get tickets";
 }
 
 const SwipeCard = ({
@@ -40,6 +48,7 @@ const SwipeCard = ({
   roomId,
   roomMemberCount = 0,
   onOpenChat,
+  onOpenExternalLink,
 }: SwipeCardProps) => {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 0, 300], [-18, 0, 18]);
@@ -151,6 +160,28 @@ const SwipeCard = ({
             <span className="px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm text-xs font-semibold text-gray-900 shadow-sm">
               {category}
             </span>
+          </div>
+        )}
+
+        {isTop && event.url && onOpenExternalLink && (
+          <div
+            className="absolute top-5 left-5 z-20"
+            onPointerDown={onCornerPointerDown}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenExternalLink(event);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-gray-900 shadow-sm transition hover:bg-white active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={`Open event on ${event.source === "ticketmaster" ? "Ticketmaster" : event.source === "eventbrite" ? "Eventbrite" : "host platform"}`}
+            >
+              <Ticket className="h-3.5 w-3.5 text-accent" />
+              <span className="hidden sm:inline">{ticketLabel(event)}</span>
+              <span className="sm:hidden">Tickets</span>
+              <ExternalLink className="h-3 w-3 text-gray-500" />
+            </button>
           </div>
         )}
 

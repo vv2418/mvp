@@ -5,6 +5,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { toast } from "sonner";
+import { DEFAULT_AVATAR_URL } from "@/lib/avatar";
 
 const NAV_ITEMS = [
   { path: "/feed", icon: Flame, label: "Discover" },
@@ -81,7 +82,7 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
       userId = user.id;
       const name = user.user_metadata?.name || "You";
       setUserName(name);
-      setUserAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
+      setUserAvatar(DEFAULT_AVATAR_URL);
       supabase.from("profiles").select("avatar_url, name").eq("id", user.id).maybeSingle().then(({ data }) => {
         if (data?.name) setUserName(data.name);
         if (data?.avatar_url) setUserAvatar(data.avatar_url);

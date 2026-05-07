@@ -10,6 +10,7 @@ import MentionInput from "@/components/chat/MentionInput";
 import MessageBubble from "@/components/chat/MessageBubble";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { DEFAULT_AVATAR_URL } from "@/lib/avatar";
 
 interface RoomMember {
   id: string;
@@ -66,9 +67,7 @@ function MemberTile({
   onClick: () => void;
   variant: "chip" | "row";
 }) {
-  const avatarUrl =
-    member.avatar_url ||
-    `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(member.id)}`;
+  const avatarUrl = member.avatar_url || DEFAULT_AVATAR_URL;
   if (variant === "chip") {
     return (
       <button
@@ -430,7 +429,7 @@ const Chat = () => {
     { id: "ai", name: "Rekindled AI", isAI: true },
     ...members
       .filter((m) => m.id !== currentUserId)
-      .map((m) => ({ id: m.id, name: m.name })),
+      .map((m) => ({ id: m.id, name: m.name, avatarUrl: m.avatar_url })),
   ];
 
   const handleMemberClick = (member: RoomMember) => {
@@ -528,20 +527,26 @@ const Chat = () => {
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
                   <div className="mx-auto max-w-2xl space-y-6">
-                    {messages.map((msg, i) => (
-                      <MessageBubble
-                        key={msg.id}
-                        senderName={msg.sender_name}
-                        content={msg.content}
-                        isMe={msg.user_id === currentUserId && !msg.is_ai}
-                        isAI={msg.is_ai}
-                        timestamp={new Date(msg.created_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                        index={i}
-                      />
-                    ))}
+                    {messages.map((msg, i) => {
+                      const sender = msg.user_id
+                        ? members.find((m) => m.id === msg.user_id)
+                        : undefined;
+                      return (
+                        <MessageBubble
+                          key={msg.id}
+                          senderName={msg.sender_name}
+                          senderAvatarUrl={sender?.avatar_url ?? null}
+                          content={msg.content}
+                          isMe={msg.user_id === currentUserId && !msg.is_ai}
+                          isAI={msg.is_ai}
+                          timestamp={new Date(msg.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          index={i}
+                        />
+                      );
+                    })}
                     <div ref={messagesEndRef} />
                   </div>
                 </div>

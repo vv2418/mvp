@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { REKINDLE_PROFILE_UPDATED } from '@/lib/rekindle-events';
 import { CountUpValue } from '@/components/CountUpValue';
+import { DEFAULT_AVATAR_URL } from '@/lib/avatar';
 
 const INTEREST_LABELS: Record<string, string> = {
   music: 'Live Music', sports: 'Sports', tech: 'Tech', food: 'Food & Drinks',
@@ -93,7 +94,7 @@ export default function Profile() {
       }
 
       const realName = finalProfile?.name || user.user_metadata?.name || 'You';
-      const realAvatar = finalProfile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${realName}`;
+      const realAvatar = finalProfile?.avatar_url || DEFAULT_AVATAR_URL;
       const realBio = finalProfile?.bio ?? '';
       const realLocation = finalProfile?.location ?? '';
       const realInterests = userInterests.map((i: { interest_id: string }) => i.interest_id);

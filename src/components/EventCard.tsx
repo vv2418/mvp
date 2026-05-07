@@ -2,6 +2,8 @@ import { motion } from "framer-motion";
 import { Calendar, MapPin, Users, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+export type EventSource = "ticketmaster" | "eventbrite" | "other";
+
 export interface EventData {
   id: string;
   title: string;
@@ -13,6 +15,10 @@ export interface EventData {
   attendees: number;
   image: string;
   tags: string[];
+  /** Deep link to the event listing on the host platform (e.g. Ticketmaster). */
+  url?: string;
+  /** Which third-party platform this event came from. */
+  source?: EventSource;
 }
 
 interface EventCardProps {

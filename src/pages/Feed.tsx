@@ -9,9 +9,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { trackEvent } from "@/lib/analytics";
 import { REKINDLE_LIKED_EVENTS_CHANGED } from "@/lib/rekindle-events";
 import { CountUpValue } from "@/components/CountUpValue";
+import ExternalEventLinkDialog, {
+  shouldShowExternalDisclaimer,
+  openExternalEventLinkDirect,
+} from "@/components/ExternalEventLinkDialog";
+import { DEFAULT_AVATAR_URL } from "@/lib/avatar";
 import {
   Flame, X, Heart, Star, MapPin, Search, Bell, Settings,
   TrendingUp, Sparkles, Users, MessageCircle, ChevronRight, Clock, Zap,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -171,6 +177,16 @@ const Feed = () => {
   const notifRef = useRef<HTMLDivElement>(null);
   const [trendingModalOpen, setTrendingModalOpen] = useState(false);
   const [recentSwipersCount, setRecentSwipersCount] = useState(0);
+  const [externalLinkEvent, setExternalLinkEvent] = useState<EventData | null>(null);
+
+  const handleOpenExternalLink = useCallback((event: EventData) => {
+    if (!event.url) return;
+    if (shouldShowExternalDisclaimer()) {
+      setExternalLinkEvent(event);
+    } else {
+      openExternalEventLinkDirect(event);
+    }
+  }, []);
 
   const refreshPulseStats = useCallback(async () => {
     const { data, error } = await supabase.rpc("get_discover_pulse_stats");
@@ -187,7 +203,7 @@ const Feed = () => {
     const name = profile?.name || user.user_metadata?.name || "You";
     setUserName(name);
     setAvatarLoadFailed(false);
-    setUserAvatar(profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`);
+    setUserAvatar(profile?.avatar_url || DEFAULT_AVATAR_URL);
 
     const { count: sc } = await supabase.from("swipes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("direction", "right");
     setSwipeCount(sc ?? 0);
@@ -594,8 +610,7 @@ const Feed = () => {
     return rows.map((r) => ({ ...r, barPct: Math.max(8, Math.round((r.score / max) * 100)) }));
   }, [catalogEvents, swipeCounts]);
 
-  const avatarFallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userName || "You"}`;
-  const profileAvatarSrc = !avatarLoadFailed && userAvatar ? userAvatar : avatarFallback;
+  const profileAvatarSrc = !avatarLoadFailed && userAvatar ? userAvatar : DEFAULT_AVATAR_URL;
 
   return (
     <AppShell>
@@ -856,6 +871,7 @@ const Feed = () => {
                               const rid = stat?.roomId;
                               if (rid) navigate(`/chat/${rid}?preview=1`);
                             }}
+                            onOpenExternalLink={handleOpenExternalLink}
                           />
                           );
                         })}
@@ -1126,12 +1142,24 @@ const Feed = () => {
                             : `${roomStatsByEvent[event.id]?.memberCount} in Rekindle chat`}
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleSelectSuggestion(event); setTrendingModalOpen(false); }}
-                        className="w-full py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
-                      >
-                        View Event
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleSelectSuggestion(event); setTrendingModalOpen(false); }}
+                          className="flex-1 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
+                        >
+                          View Event
+                        </button>
+                        {event.url && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleOpenExternalLink(event); }}
+                            className="inline-flex items-center gap-1.5 py-2 px-3 border border-border rounded-lg text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+                            aria-label="Open ticket page on host platform"
+                          >
+                            Tickets
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </motion.div>
                   ))}
                   {trendingEvents.length === 0 && events.length === 0 && (
@@ -1143,6 +1171,12 @@ const Feed = () => {
           </>
         )}
       </AnimatePresence>
+
+      <ExternalEventLinkDialog
+        event={externalLinkEvent}
+        open={externalLinkEvent !== null}
+        onClose={() => setExternalLinkEvent(null)}
+      />
     </AppShell>
   );
 };

@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { avatarUrlOrDefault } from "@/lib/avatar";
 
 interface MessageBubbleProps {
   senderName: string;
+  senderAvatarUrl?: string | null;
   content: string;
   isMe: boolean;
   isAI: boolean;
@@ -25,7 +27,7 @@ function renderContent(content: string) {
   });
 }
 
-const MessageBubble = ({ senderName, content, isMe, isAI, timestamp, index }: MessageBubbleProps) => {
+const MessageBubble = ({ senderName, senderAvatarUrl, content, isMe, isAI, timestamp, index }: MessageBubbleProps) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -41,9 +43,9 @@ const MessageBubble = ({ senderName, content, isMe, isAI, timestamp, index }: Me
             </div>
           ) : (
             <img
-              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`}
+              src={avatarUrlOrDefault(senderAvatarUrl)}
               alt={senderName}
-              className="h-8 w-8 rounded-full bg-secondary"
+              className="h-8 w-8 rounded-full bg-secondary object-cover"
             />
           )}
         </div>

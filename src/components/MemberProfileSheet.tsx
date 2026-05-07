@@ -7,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { DEFAULT_AVATAR_URL } from "@/lib/avatar";
 
 interface MemberProfile {
   id: string;
@@ -53,9 +54,7 @@ const MemberProfileSheet = ({
 }: MemberProfileSheetProps) => {
   if (!member) return null;
 
-  const avatarUrl =
-    member.avatar_url ||
-    `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(member.id)}`;
+  const avatarUrl = member.avatar_url || DEFAULT_AVATAR_URL;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { avatarUrlOrDefault } from "@/lib/avatar";
 
 interface MentionOption {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   isAI?: boolean;
 }
 
@@ -128,9 +130,9 @@ const MentionInput = ({ options, onSend, disabled }: MentionInputProps) => {
                   <span className="text-base">✨</span>
                 ) : (
                   <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${opt.name}`}
+                    src={avatarUrlOrDefault(opt.avatarUrl)}
                     alt=""
-                    className="h-6 w-6 rounded-full bg-secondary"
+                    className="h-6 w-6 rounded-full bg-secondary object-cover"
                   />
                 )}
                 <span className="font-medium">{opt.name}</span>

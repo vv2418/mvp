@@ -13,6 +13,7 @@ interface TMImage {
 interface TMEvent {
   id: string;
   name: string;
+  url?: string;
   info?: string;
   pleaseNote?: string;
   dates: {
@@ -89,6 +90,8 @@ function tmEventToEventData(event: TMEvent): EventData {
     attendees: 0,
     image: pickImage(event.images),
     tags,
+    url: event.url,
+    source: "ticketmaster",
   };
 }
 
