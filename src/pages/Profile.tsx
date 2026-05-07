@@ -297,30 +297,30 @@ export default function Profile() {
   return (
     <AppShell>
       <div className="flex flex-1 flex-col bg-background min-h-0 overflow-y-auto">
-        <div className="max-w-[1400px] mx-auto px-12 py-8 w-full pb-24 lg:pb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12 flex items-start gap-3 sm:gap-4">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 lg:px-12 py-6 lg:py-8 w-full pb-24 lg:pb-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 lg:mb-12 flex items-start gap-3 sm:gap-4">
             <button
               type="button"
               onClick={() => navigate(-1)}
               aria-label="Go back"
-              className="mt-2 sm:mt-3 shrink-0 flex h-10 w-10 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.97]"
+              className="mt-1.5 sm:mt-3 shrink-0 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm transition-all hover:border-border hover:bg-muted hover:text-foreground active:scale-[0.97]"
             >
               <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2} />
             </button>
             <div className="min-w-0 flex-1">
-              <h1 className="text-5xl mb-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Profile</h1>
-              <p className="text-lg text-muted-foreground">Manage your profile and view your activity</p>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl mb-1 lg:mb-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Profile</h1>
+              <p className="text-sm sm:text-base lg:text-lg text-muted-foreground">Manage your profile and view your activity</p>
             </div>
           </motion.div>
 
-          <div className="grid grid-cols-3 gap-8">
-            <div className="col-span-2 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
+            <div className="lg:col-span-2 space-y-4 lg:space-y-6">
 
               {/* Profile Header Card */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
-                <div className="flex items-start gap-6">
-                  <div className="relative">
+                className="bg-card rounded-2xl p-5 sm:p-6 lg:p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+                  <div className="relative shrink-0 self-center sm:self-start">
                     <div className="w-24 h-24 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-3xl font-semibold overflow-hidden">
                       {avatar ? <img src={avatar} alt={name} className="w-full h-full object-cover" /> : name[0]?.toUpperCase()}
                     </div>
@@ -331,33 +331,35 @@ export default function Profile() {
                     <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                   </div>
 
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: 'var(--font-heading)' }}>{name}</h2>
-                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                          <MapPin size={14} />{location}
-                        </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3 mb-3 sm:mb-4">
+                      <div className="min-w-0">
+                        <h2 className="text-xl sm:text-2xl font-semibold mb-1 truncate" style={{ fontFamily: 'var(--font-heading)' }}>{name}</h2>
+                        {location && (
+                          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                            <MapPin size={14} className="shrink-0" /><span className="truncate">{location}</span>
+                          </div>
+                        )}
                       </div>
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={() => setEditProfileOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                        <Edit2 size={14} />Edit Profile
+                        className="shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm">
+                        <Edit2 size={14} /><span className="hidden sm:inline">Edit Profile</span><span className="sm:hidden">Edit</span>
                       </motion.button>
                     </div>
 
-                    <p className="text-muted-foreground mb-6 leading-relaxed">
+                    <p className="text-muted-foreground mb-4 sm:mb-6 leading-relaxed text-sm sm:text-base">
                       {bio || <span className="italic opacity-50">No bio yet — click Edit Profile to add one</span>}
                     </p>
 
                     <div className="flex flex-wrap gap-2">
                       {interests.slice(0, 5).map((interest, i) => (
-                        <span key={i} className="px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+                        <span key={i} className="px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs sm:text-sm font-medium">
                           {INTEREST_LABELS[interest] ?? interest}
                         </span>
                       ))}
                       {interests.length > 5 && (
-                        <span className="px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-sm font-medium">
+                        <span className="px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs sm:text-sm font-medium">
                           +{interests.length - 5} more
                         </span>
                       )}
@@ -390,26 +392,26 @@ export default function Profile() {
 
               {/* Upcoming Events */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
-                <h3 className="text-xl font-semibold mb-6" style={{ fontFamily: 'var(--font-heading)' }}>Upcoming Events</h3>
+                className="bg-card rounded-2xl p-5 sm:p-6 lg:p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6" style={{ fontFamily: 'var(--font-heading)' }}>Upcoming Events</h3>
                 {upcomingEvents.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {upcomingEvents.map((event, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-border hover:border-accent/20 hover:bg-accent/5 transition-all">
-                        <div>
-                          <h4 className="font-semibold text-foreground mb-1">{event.title}</h4>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1"><Calendar size={14} />{event.date}</span>
-                            <span className="flex items-center gap-1"><MapPin size={14} />{event.venue}</span>
+                      <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border hover:border-accent/20 hover:bg-accent/5 transition-all">
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-foreground mb-1 truncate">{event.title}</h4>
+                          <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-muted-foreground flex-wrap">
+                            <span className="flex items-center gap-1"><Calendar size={14} className="shrink-0" />{event.date}</span>
+                            <span className="flex items-center gap-1"><MapPin size={14} className="shrink-0" />{event.venue}</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
                           <div className="flex items-center gap-1 text-sm text-muted-foreground font-numeric">
                             <Users size={14} />
                             <CountUpValue value={event.attendees} durationMs={700} />
                           </div>
                           <button onClick={() => navigate(`/chat/${event.roomId}`)}
-                            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors">
+                            className="px-3 sm:px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors">
                             View Chat
                           </button>
                         </div>

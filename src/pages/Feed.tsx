@@ -618,27 +618,27 @@ const Feed = () => {
           <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0">
 
           {/* ── Header ────────────────────────────────────────────────────────── */}
-          <div className="flex items-start justify-between mb-8 flex-shrink-0">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-end gap-3 mb-4">
-                <h1 className="text-5xl leading-none" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Discover</h1>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent text-sm font-semibold mb-0.5">
-                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <div className="flex items-start justify-between mb-4 lg:mb-8 flex-shrink-0 gap-3">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="min-w-0">
+              <div className="flex items-end gap-2 sm:gap-3 mb-2 lg:mb-4 flex-wrap">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl leading-none" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Discover</h1>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-2 rounded-full bg-accent/10 text-accent text-xs sm:text-sm font-semibold mb-0.5">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-accent animate-pulse" />
                   Live
                 </div>
               </div>
-              <p className="text-base text-muted-foreground">
+              <p className="text-sm lg:text-base text-muted-foreground">
                 Swipe on events you love. Match with people who feel the same.
                 Start conversations before you arrive.
               </p>
             </motion.div>
 
-            {/* Right controls */}
+            {/* Right controls — desktop only (mobile uses AppShell top bar) */}
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
-              className="flex items-center gap-2"
+              className="hidden lg:flex items-center gap-2"
             >
               {/* Notifications bell */}
               <div className="relative" ref={notifRef}>
