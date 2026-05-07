@@ -456,57 +456,57 @@ export default function EventCalendar() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[1400px] mx-auto px-12 py-8">
+      <div className="flex-1 overflow-y-auto pb-24 lg:pb-0">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 lg:px-12 py-6 lg:py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
+            className="mb-6 lg:mb-12"
           >
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="mb-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+              className="mb-4 lg:mb-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 sm:px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
             >
               <ArrowLeft size={16} />
               Back
             </button>
-            <h1 className="text-5xl mb-2 leading-none font-display font-semibold">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl mb-1 lg:mb-2 leading-none font-display font-semibold">
               Calendar
             </h1>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-sm sm:text-base lg:text-lg text-muted-foreground">
               Your liked events and personalized suggestions
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-3 gap-8">
-            <div className="col-span-2 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
+            <div className="lg:col-span-2 space-y-4 lg:space-y-6">
               {/* Calendar Header */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
+                className="bg-card rounded-2xl p-4 sm:p-6 lg:p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
               >
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-2xl font-semibold text-foreground">
+                <div className="flex items-center justify-between mb-4 sm:mb-6 lg:mb-8 gap-2 flex-wrap">
+                  <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold text-foreground">
                     <span className="font-display">{format(currentDate, 'MMMM')}</span>{' '}
-                    <span className="font-numeric text-2xl tracking-tight">{format(currentDate, 'yyyy')}</span>
+                    <span className="font-numeric tracking-tight">{format(currentDate, 'yyyy')}</span>
                   </h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-                      className="w-10 h-10 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
                     >
-                      <ChevronLeft size={20} />
+                      <ChevronLeft size={18} />
                     </motion.button>
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => setCurrentDate(new Date())}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-accent hover:bg-accent/10 transition-colors"
+                      className="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium text-accent hover:bg-accent/10 transition-colors"
                     >
                       Today
                     </motion.button>
@@ -514,18 +514,19 @@ export default function EventCalendar() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                      className="w-10 h-10 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
                     >
-                      <ChevronRight size={20} />
+                      <ChevronRight size={18} />
                     </motion.button>
                   </div>
                 </div>
 
                 {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                    <div key={day} className="text-center py-2 text-sm font-semibold text-muted-foreground">
-                      {day}
+                    <div key={day} className="text-center py-1 sm:py-2 text-[10px] sm:text-sm font-semibold text-muted-foreground">
+                      <span className="hidden sm:inline">{day}</span>
+                      <span className="sm:hidden">{day[0]}</span>
                     </div>
                   ))}
                   {calendarDays.map((day, i) => {
@@ -542,17 +543,17 @@ export default function EventCalendar() {
                         whileTap={{ scale: 0.95 }}
                         onClick={() => setSelectedDate(day)}
                         className={`
-                          relative aspect-square rounded-xl p-2 transition-all
+                          relative aspect-square rounded-lg sm:rounded-xl p-1 sm:p-2 transition-all flex items-center justify-center
                           ${!isCurrentMonth ? 'opacity-30' : ''}
                           ${isSelected ? 'bg-accent text-white shadow-lg' : 'hover:bg-muted'}
                           ${isTodayDate && !isSelected ? 'ring-2 ring-accent/30' : ''}
                         `}
                       >
-                        <div className="text-sm font-numeric">
+                        <div className="text-xs sm:text-sm font-numeric">
                           {format(day, 'd')}
                         </div>
                         {hasEvents && (
-                          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+                          <div className="absolute bottom-0.5 sm:bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
                             {events.slice(0, 3).map((_, idx) => (
                               <div
                                 key={idx}
@@ -574,12 +575,12 @@ export default function EventCalendar() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-card rounded-2xl p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
+                className="bg-card rounded-2xl p-5 sm:p-6 lg:p-8 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold text-foreground">
+                <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 flex-wrap">
+                  <h3 className="text-lg sm:text-xl font-semibold text-foreground">
                     <span className="font-display">{format(selectedDate, 'EEEE, MMMM')}</span>{' '}
-                    <span className="font-numeric text-xl tracking-tight">{format(selectedDate, 'd')}</span>
+                    <span className="font-numeric tracking-tight">{format(selectedDate, 'd')}</span>
                   </h3>
                   {selectedDateEvents.length > 0 && (
                     <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-sm font-medium">
@@ -598,20 +599,20 @@ export default function EventCalendar() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.3 + i * 0.1 }}
-                          className="p-6 rounded-xl border border-border hover:border-accent/20 hover:bg-accent/5 transition-all"
+                          className="p-4 sm:p-6 rounded-xl border border-border hover:border-accent/20 hover:bg-accent/5 transition-all"
                         >
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <h4 className="font-semibold text-foreground text-lg">{event.title}</h4>
-                                <Heart size={16} className="text-accent fill-accent" />
+                          <div className="flex items-start justify-between mb-3 gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                <h4 className="font-semibold text-foreground text-base sm:text-lg leading-tight">{event.title}</h4>
+                                <Heart size={16} className="text-accent fill-accent shrink-0" />
                               </div>
                               <span className="inline-block px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">
                                 {event.category || 'Liked'}
                               </span>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm text-muted-foreground">
                             <div className="flex items-center gap-2">
                               <Clock size={14} />
                               {event.time}
@@ -675,12 +676,12 @@ export default function EventCalendar() {
             </div>
 
             {/* Sidebar */}
-            <div className="space-y-6">
+            <div className="space-y-4 lg:space-y-6">
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-card rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
+                className="bg-card rounded-2xl p-5 sm:p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
               >
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
@@ -688,14 +689,14 @@ export default function EventCalendar() {
                   </div>
                   <h3 className="text-sm font-semibold text-foreground">This Month</h3>
                 </div>
-                <div className="space-y-3">
+                <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 lg:gap-3 lg:space-y-0">
                   <div>
                     <div className="text-3xl font-numeric text-foreground leading-none tabular-nums">
                       <CountUpValue value={thisMonthLikedCount} durationMs={900} />
                     </div>
-                    <div className="text-xs text-muted-foreground">Events you liked</div>
+                    <div className="text-xs text-muted-foreground mt-1">Events you liked</div>
                   </div>
-                  <div className="h-px bg-border" />
+                  <div className="hidden lg:block h-px bg-border" />
                   <div>
                     <div className="text-3xl font-numeric text-foreground leading-none tabular-nums">
                       <CountUpValue
@@ -703,7 +704,7 @@ export default function EventCalendar() {
                         durationMs={900}
                       />
                     </div>
-                    <div className="text-xs text-muted-foreground">Events attended</div>
+                    <div className="text-xs text-muted-foreground mt-1">Events attended</div>
                   </div>
                 </div>
               </motion.div>
@@ -712,7 +713,7 @@ export default function EventCalendar() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
-                className="bg-gradient-to-br from-accent to-orange-600 rounded-2xl p-6 text-white shadow-[0_8px_32px_rgba(232,71,10,0.2)]"
+                className="bg-gradient-to-br from-accent to-orange-600 rounded-2xl p-5 sm:p-6 text-white shadow-[0_8px_32px_rgba(232,71,10,0.2)]"
               >
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
@@ -766,7 +767,7 @@ export default function EventCalendar() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 }}
-                className="bg-card rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
+                className="bg-card rounded-2xl p-5 sm:p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
               >
                 <h3 className="text-sm font-semibold text-foreground mb-4">Next 7 Days</h3>
                 <div className="space-y-3">

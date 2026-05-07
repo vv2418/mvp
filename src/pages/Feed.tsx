@@ -614,8 +614,8 @@ const Feed = () => {
 
   return (
     <AppShell>
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-background px-4 lg:px-16 pt-4 lg:pt-10 pb-24 lg:pb-10">
-          <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0">
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto lg:overflow-hidden bg-background px-4 lg:px-16 pt-4 lg:pt-10 pb-24 lg:pb-10">
+          <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 lg:min-h-0">
 
           {/* ── Header ────────────────────────────────────────────────────────── */}
           <div className="flex items-start justify-between mb-4 lg:mb-8 flex-shrink-0 gap-3">
@@ -722,10 +722,10 @@ const Feed = () => {
           </div>
 
           {/* ── Main 2-column layout ───────────────────────────────────────────── */}
-          <div className="flex gap-8 lg:gap-12 flex-1 min-h-0">
+          <div className="flex flex-col lg:flex-row gap-6 lg:gap-12 flex-1 lg:min-h-0">
 
             {/* ── Left column: search + card + buttons ────────────────────────── */}
-            <div className="flex-1 min-w-0 max-w-lg flex flex-col min-h-0">
+            <div className="flex-1 min-w-0 lg:max-w-lg flex flex-col lg:min-h-0">
 
               {/* Always-visible search bar — matches card width */}
               <div className="relative mb-3">
@@ -921,14 +921,14 @@ const Feed = () => {
               )}
             </div>
 
-            {/* ── Right column (desktop only) ───────────────────────────────── */}
+            {/* ── Right column ───────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.3 }}
-              className="hidden lg:flex flex-col gap-4 flex-1 min-w-0 min-h-0"
+              className="flex flex-col gap-4 flex-1 min-w-0 lg:min-h-0"
             >
-            <div className="grid grid-cols-2 gap-4 flex-1" style={{ gridAutoRows: '1fr' }}>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:flex-1 lg:[grid-auto-rows:1fr]">
 
               {/* ── Card 1: Active Now ── */}
               <div className="bg-card rounded-2xl p-5 shadow-[0_4px_16px_rgba(0,0,0,0.04)] flex flex-col justify-between">
@@ -1052,7 +1052,7 @@ const Feed = () => {
                     View All →
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {trendingEvents.map((event, i) => (
                     <motion.button
                       key={event.id}
