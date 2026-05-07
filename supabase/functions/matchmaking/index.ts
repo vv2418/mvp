@@ -100,9 +100,24 @@ Deno.serve(async (req) => {
 
       const eventTitle = eventTitles[eventId] || `Event ${eventId}`;
 
+      // Look up member names so the AI icebreaker can be aware of who is in the chat
+      const newMemberIds = members.map((m) => m.user_id);
+      const { data: newMemberProfiles } = await supabase
+        .from("profiles")
+        .select("name")
+        .in("id", newMemberIds);
+      const memberNames = (newMemberProfiles || [])
+        .map((p: { name: string | null }) => p.name)
+        .filter((n: string | null): n is string => Boolean(n && n.trim()));
+
       // Seed AI icebreaker so the unread badge lights up immediately
       supabase.functions.invoke("chat-ai", {
-        body: { room_id: room.id, event_title: eventTitle, mode: "icebreaker" },
+        body: {
+          room_id: room.id,
+          event_title: eventTitle,
+          mode: "icebreaker",
+          member_names: memberNames,
+        },
       }).catch(() => {});
 
       // Notify all matched members (push / email)
@@ -151,10 +166,37 @@ Deno.serve(async (req) => {
 
         const eventTitle = eventTitles[eventId] || room.event_title || `Event ${eventId}`;
 
-        // Seed a "someone new joined" AI nudge so existing members see the unread dot
+        // Look up the new members' names + the full updated roster so the
+        // welcome message can address the new person by name.
+        const newMemberIds = newMembers.map((m) => m.user_id);
+        const allMemberIds = [...memberIds, ...newMemberIds];
+
+        const [{ data: newProfiles }, { data: allProfiles }] = await Promise.all([
+          supabase.from("profiles").select("id, name").in("id", newMemberIds),
+          supabase.from("profiles").select("id, name").in("id", allMemberIds),
+        ]);
+
+        const newMemberNames = (newProfiles || [])
+          .map((p: { name: string | null }) => p.name)
+          .filter((n: string | null): n is string => Boolean(n && n.trim()));
+        const allMemberNames = (allProfiles || [])
+          .map((p: { name: string | null }) => p.name)
+          .filter((n: string | null): n is string => Boolean(n && n.trim()));
+
+        // Send ONE welcome_member message that names the new person(s).
         supabase.functions.invoke("chat-ai", {
-          body: { room_id: room.id, event_title: eventTitle, mode: "revive" },
+          body: {
+            room_id: room.id,
+            event_title: eventTitle,
+            mode: "welcome_member",
+            new_member_names: newMemberNames,
+            member_names: allMemberNames,
+          },
         }).catch(() => {});
+
+        const newMemberFirstName = newMemberNames[0]
+          ? newMemberNames[0].trim().split(/\s+/)[0]
+          : "Someone new";
 
         for (const newMember of newMembers) {
           // Tell existing members someone joined
@@ -163,7 +205,7 @@ Deno.serve(async (req) => {
               body: {
                 type: "new_member",
                 recipient_user_id: existingId,
-                data: { event_title: eventTitle, room_id: room.id, new_member_name: "Someone new" },
+                data: { event_title: eventTitle, room_id: room.id, new_member_name: newMemberFirstName },
               },
             }).catch(() => {});
           }

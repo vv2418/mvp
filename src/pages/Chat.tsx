@@ -29,33 +29,13 @@ interface Message {
   created_at: string;
 }
 
-const CHAT_IDLE_MINUTES = Math.max(
-  1,
-  Number(import.meta.env.VITE_CHAT_IDLE_MINUTES || 10),
-);
-
-/** Generate an event-specific icebreaker message */
+/**
+ * Local fallback icebreaker — only used if the AI welcome message hasn't been
+ * seeded yet (e.g. legacy room with no messages). Keep it short and casual;
+ * the real welcome comes from the chat-ai edge function.
+ */
 function getEventIcebreaker(eventTitle: string): string {
-  const lower = eventTitle.toLowerCase();
-  if (lower.includes("music") || lower.includes("concert") || lower.includes("dj"))
-    return `Welcome to the "${eventTitle}" room! 🎵 I'm here to help break the ice. What's a song that's been on repeat for you lately? Anyone been to a similar show before?`;
-  if (lower.includes("food") || lower.includes("brunch") || lower.includes("dinner") || lower.includes("taco"))
-    return `Hey foodies! Welcome to "${eventTitle}" 🍽️ What's your go-to comfort food? And does anyone have a favorite spot near the venue?`;
-  if (lower.includes("tech") || lower.includes("hack") || lower.includes("startup") || lower.includes("pitch"))
-    return `Welcome to "${eventTitle}"! 💻 What are you working on right now? Any cool side projects or ideas you're excited about?`;
-  if (lower.includes("fitness") || lower.includes("run") || lower.includes("yoga") || lower.includes("hike"))
-    return `Hey everyone! Welcome to "${eventTitle}" 💪 What's your fitness routine like? Anyone done an event like this before?`;
-  if (lower.includes("comedy") || lower.includes("standup") || lower.includes("improv"))
-    return `Welcome to "${eventTitle}"! 😂 Who's your favorite comedian right now? This is going to be a great time!`;
-  if (lower.includes("art") || lower.includes("gallery") || lower.includes("museum"))
-    return `Hey art lovers! Welcome to "${eventTitle}" 🎨 What kind of art are you into? Anyone been to this gallery before?`;
-  if (lower.includes("game") || lower.includes("gaming") || lower.includes("board"))
-    return `Welcome to "${eventTitle}"! 🎮 What games are you into right now? Let's get to know each other before we meet up!`;
-  if (lower.includes("salsa") || lower.includes("dance"))
-    return `Welcome to "${eventTitle}"! 💃 Who's ready to hit the dance floor? Any experienced dancers here or are we all beginners?`;
-  if (lower.includes("movie") || lower.includes("film") || lower.includes("cinema"))
-    return `Welcome to "${eventTitle}"! 🎬 What's the last movie that blew your mind? Let's get to know each other's taste!`;
-  return `Welcome to the "${eventTitle}" room! 🔥 I'm Rekindled AI — here to help you all connect before the event. What are you most excited about for this one?`;
+  return `new chat for "${eventTitle}" — say hi 👋`;
 }
 
 function MemberTile({
@@ -119,7 +99,6 @@ const Chat = () => {
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const idleTimerRef = useRef<number | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -319,52 +298,6 @@ const Chat = () => {
     };
   }, [roomId]);
 
-  const triggerIdleRevive = useCallback(async () => {
-    if (!roomId || !roomTitle || !currentUserId) return;
-
-    try {
-      const { error: aiErr } = await supabase.functions.invoke("chat-ai", {
-        body: {
-          room_id: roomId,
-          event_title: roomTitle,
-          user_id: currentUserId,
-          mode: "revive",
-          idle_after_minutes: CHAT_IDLE_MINUTES,
-        },
-      });
-      if (aiErr) console.error("Idle revive error:", aiErr);
-    } catch (err) {
-      console.error("Idle revive error:", err);
-    }
-  }, [roomId, roomTitle, currentUserId]);
-
-  useEffect(() => {
-    if (idleTimerRef.current) {
-      window.clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = null;
-    }
-
-    if (messages.length === 0) return;
-
-    const latestMessage = messages[messages.length - 1];
-    const latestTimestamp = new Date(latestMessage.created_at).getTime();
-    if (!Number.isFinite(latestTimestamp)) return;
-
-    const triggerAt = latestTimestamp + CHAT_IDLE_MINUTES * 60 * 1000;
-    const delay = Math.max(0, triggerAt - Date.now());
-
-    idleTimerRef.current = window.setTimeout(() => {
-      triggerIdleRevive();
-    }, delay);
-
-    return () => {
-      if (idleTimerRef.current) {
-        window.clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-    };
-  }, [messages, triggerIdleRevive]);
-
   const showReadOnlyDiscoverBanner = !canReply && isDiscoverPreview;
 
   const handleSend = async (text: string) => {
@@ -406,22 +339,6 @@ const Chat = () => {
           },
         },
       }).catch(() => {});
-    }
-
-    // Get recent messages for AI context
-    const recentMsgs = messages.slice(-10).concat({ id: "temp", user_id: currentUserId, sender_name: currentUserName, content: text, is_ai: false, created_at: new Date().toISOString() });
-
-    const { error: aiErr } = await supabase.functions.invoke("chat-ai", {
-      body: {
-        room_id: roomId,
-        event_title: roomTitle,
-        recent_messages: recentMsgs.map(m => ({ sender_name: m.sender_name, content: m.content })),
-        user_id: currentUserId,
-      },
-    });
-    if (aiErr) {
-      console.error("AI response error:", aiErr);
-      toast.error("Rekindled AI could not reply. Check the chat-ai function and AI gateway env vars.");
     }
   };
 

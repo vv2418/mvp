@@ -6,70 +6,148 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-type ChatMode = "reply" | "revive";
+type ChatMode = "icebreaker" | "welcome_member" | "reply" | "revive";
 
 interface ContextMessage {
   sender_name: string;
   content: string;
 }
 
+/**
+ * Shared persona — talks like a regular person already in the chat, not a
+ * cheerful host or assistant. The goal is for the message to feel
+ * indistinguishable from any of the other group members.
+ */
+const PERSONA = `
+You are "Rekindled" — you write group-chat messages on behalf of the app, but
+you should sound like a chill regular person who is also going to the event,
+not like an AI, host, MC, or customer-support bot.
+
+How a real person texts in a group:
+- Lowercase by default. capitalize only for emphasis.
+- Use natural contractions ("we're", "y'all", "gonna", "kinda", "tbh").
+- It's okay to start mid-thought ("ok so...", "wait...", "yo").
+- Sometimes just a reaction or a vibe. you do NOT have to ask a question.
+- Keep it ONE short sentence. occasionally two if the second is just a fragment.
+- AT MOST one emoji per message, and only when it actually fits. usually zero.
+- Never use em-dashes (—). use "..." or ", " or split into two short sentences instead.
+- Never use forced wordplay, alliteration, or "cute" coined phrases
+  (no "bubble-splashers", "soggy glory", "towel-duty", etc.).
+- Never sound like a brand voice ("legendary energy!", "let's gooo team!", "love that for you").
+- Never narrate your own role ("as your host...", "I'm here to help...", "let me know!").
+- Don't ask "quick one:" / "real quick" / "quick question" framings.
+- Don't end every message with a question. Most messages should not.
+
+Hard safety rules:
+- Never insult anyone's appearance, identity, intelligence, race, ethnicity,
+  religion, gender, sexuality, disability, body, money, or background.
+- Never use slurs, harassment, or threats.
+- Keep it kind. tease about preferences (seats, arrival time, food order)
+  only if it actually fits, and only lightly.
+`.trim();
+
 function buildSystemPrompt(mode: ChatMode, eventTitle: string): string {
-  const sharedRules = `
-You are Rekindled AI, the group chat bot for the event "${eventTitle}".
+  if (mode === "icebreaker") {
+    return `${PERSONA}
 
-Rules:
-- Keep it SHORT (1-2 sentences max)
-- Sound warm, social, and specific to the event
-- Reference the event or recent conversation when possible
-- Ask engaging questions people can answer quickly
-- Never be mean, creepy, or offensive
-- Avoid repeating the same opener twice in a row
-- Be cheeky and playful, but never cruel
-- Tease opinions, plans, habits, and event takes, not personal traits
-- Never insult a user's appearance, intelligence, identity, background, or lived experience
-- Never target race, ethnicity, nationality, religion, gender, sexuality, disability, or body-related traits
-- Never use slurs, harassment, threats, humiliation, or profanity aimed at users
-- If the room feels tense, switch from provocation to friendly moderation`;
+You are writing the FIRST message in a brand-new group chat for the event:
+"${eventTitle}".
 
-  if (mode === "revive") {
-    return `${sharedRules}
-- The room has gone quiet, so your job is to restart the conversation naturally
-- Introduce a fresh, relevant topic or easy prompt people can jump into
-- Make it feel like a thoughtful host, not a spammy bot
-- Use low-stakes "hot take" energy only when it feels fun, like playful leg-pulling about music taste, arrival time, outfit planning, food orders, or event strategy`;
+A few people just got matched into this chat because they all said they're going.
+Write one short, casual opener that fits a real group chat — like a friend who
+just got added and is breaking the ice. Examples of the *style* (do NOT copy):
+  • "ok matched chat for ${eventTitle} 👀"
+  • "yo who else is going to this"
+  • "didn't expect a chat for this lol. excited tho"
+  • "first time here for me, anyone been before?"
+
+Pick ONE message. Do not list options. Do not greet "everyone". Do not say
+"welcome to the chat". Do not introduce yourself. Do not mention the app.`;
   }
 
-  return `${sharedRules}
-- Your job is to keep the conversation alive and entertaining by dropping a SHORT, spicy "rage bait" or hot-take style message after each user message
-- Think cheeky social host, not toxic troll
-- Spark debate with harmless leg-pulling about preferences, plans, or event opinions
-- Good targets: song choices, seat preferences, timing, pregame plans, outfit choices, food/drink takes, who is most prepared
-- Bad targets: identity, trauma, insecurity, appearance, money, status, or anything that could feel discriminatory or personal
-- End with a question when it helps keep the thread moving`;
+  if (mode === "welcome_member") {
+    return `${PERSONA}
+
+You are writing a SHORT message acknowledging that someone new just joined
+the existing group chat for the event "${eventTitle}".
+
+Write it like a regular member of the group casually noticing the new person.
+Examples of the *style* (do NOT copy):
+  • "yo {name} 👋"
+  • "ayy {name} welcome"
+  • "{name} joined, sick"
+  • "we got {name} now, that's 4 of us going"
+
+Pick ONE message. It MUST mention the new person by their first name.
+Do not greet the whole group. Do not ask the new person a question.
+Do not introduce yourself or the app.`;
+  }
+
+  // Legacy modes — kept for back-compat. Same human persona.
+  if (mode === "revive") {
+    return `${PERSONA}
+
+The "${eventTitle}" group chat has gone quiet. Drop ONE casual line that fits
+a real friend trying to restart a thread without making a big deal of the
+silence. Don't say "the chat has been quiet". Don't apologize.`;
+  }
+
+  return `${PERSONA}
+
+Reply naturally to the most recent messages in the "${eventTitle}" group chat.
+One short line. Don't sound like you're moderating.`;
 }
 
 function buildUserPrompt(
   mode: ChatMode,
   eventTitle: string,
   convoContext: string,
-  idleAfterMinutes: number,
+  newMemberNames: string[],
+  memberNames: string[],
 ): string {
-  if (mode === "revive") {
-    return `The "${eventTitle}" room has been quiet for at least ${idleAfterMinutes} minutes.
+  if (mode === "icebreaker") {
+    const who = memberNames.length > 0
+      ? `People in the chat (don't list them by name, just for your awareness): ${memberNames.join(", ")}.`
+      : "";
+    return `Event: "${eventTitle}".
+${who}
 
-Recent conversation:
-${convoContext || "No recent messages."}
-
-Write one short, relevant message that re-opens the conversation with a fresh topic people would actually want to answer.
-Aim for playful, low-stakes hot-take energy if it fits the room, but keep it kind and safe.`;
+Write the first message in this brand-new group chat. One short casual line.`;
   }
 
-  return `Here's the recent conversation:
+  if (mode === "welcome_member") {
+    const namesLine = newMemberNames.length > 0
+      ? `New person who just joined: ${newMemberNames[0]}${
+          newMemberNames.length > 1 ? ` (and ${newMemberNames.length - 1} other(s): ${newMemberNames.slice(1).join(", ")})` : ""
+        }.`
+      : "Someone new just joined the chat.";
+    const total = memberNames.length > 0 ? `Total members now: ${memberNames.length}.` : "";
+    return `Event: "${eventTitle}".
+${namesLine}
+${total}
 
+Write one short casual line acknowledging ${newMemberNames[0] || "them"} by first name.`;
+  }
+
+  if (mode === "revive") {
+    return `Event: "${eventTitle}".
+
+Recent messages:
+${convoContext || "(no recent messages)"}
+
+Write one short casual line to nudge the conversation back. Do not mention silence.`;
+  }
+
+  return `Event: "${eventTitle}".
+
+Recent messages:
 ${convoContext}
 
-Generate a short, playful response that keeps the conversation moving.
-Lean into harmless, cheeky debate when appropriate, but do not cross into insults or identity-based bait.`;
+Reply with one short, natural line.`;
+}
+
+function firstNameOf(full: string): string {
+  return full.trim().split(/\s+/)[0] || full;
 }
 
 Deno.serve(async (req) => {
@@ -84,6 +162,8 @@ Deno.serve(async (req) => {
     const providedRecentMessages = (body?.recent_messages ?? []) as ContextMessage[];
     const requestedMode = (body?.mode ?? "reply") as ChatMode;
     const idleAfterMinutes = Math.max(1, Number(body?.idle_after_minutes ?? 10));
+    const providedMemberNames = (body?.member_names ?? []) as string[];
+    const providedNewMemberNames = (body?.new_member_names ?? []) as string[];
 
     if (!roomId) throw new Error("room_id is required");
 
@@ -124,7 +204,8 @@ Deno.serve(async (req) => {
         }
       | undefined;
 
-    if (requestedMode === "revive" || recentMessages.length === 0) {
+    // Only the legacy modes need conversation context.
+    if (requestedMode === "revive" || (requestedMode === "reply" && recentMessages.length === 0)) {
       const { data: messageRows, error: messageError } = await supabase
         .from("messages")
         .select("created_at, is_ai, sender_name, content")
@@ -170,8 +251,10 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-
     }
+
+    const memberNames = providedMemberNames.map(firstNameOf).filter(Boolean);
+    const newMemberNames = providedNewMemberNames.map(firstNameOf).filter(Boolean);
 
     const convoContext = recentMessages
       .map((message) => `${message.sender_name}: ${message.content}`)
@@ -187,6 +270,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           model: AI_MODEL,
+          temperature: 0.95,
           messages: [
             {
               role: "system",
@@ -198,7 +282,8 @@ Deno.serve(async (req) => {
                 requestedMode,
                 eventTitle,
                 convoContext,
-                idleAfterMinutes,
+                newMemberNames,
+                memberNames,
               ),
             },
           ],
@@ -234,9 +319,29 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    const aiContent =
-      data.choices?.[0]?.message?.content ||
-      "Quick question for the group: what's everyone most excited about for this event?";
+
+    let aiContent: string = data.choices?.[0]?.message?.content ?? "";
+
+    // Sanitise: strip surrounding quotes the model often adds, kill em-dashes,
+    // collapse whitespace, and clamp length so a runaway response never blows
+    // up the chat UI.
+    aiContent = aiContent
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/[—–]/g, "...")
+      .replace(/\s+/g, " ")
+      .slice(0, 240);
+
+    if (!aiContent) {
+      // Fallback if the model returned nothing — pick something safe per mode.
+      if (requestedMode === "welcome_member" && newMemberNames[0]) {
+        aiContent = `yo ${newMemberNames[0]} 👋`;
+      } else if (requestedMode === "icebreaker") {
+        aiContent = `ok new chat for ${eventTitle} 👀 who else is going`;
+      } else {
+        aiContent = `anyone here?`;
+      }
+    }
 
     const { error: insertError } = await supabase.from("messages").insert({
       room_id: roomId,

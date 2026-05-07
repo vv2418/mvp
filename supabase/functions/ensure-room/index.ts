@@ -6,27 +6,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Local fallback only — used when ensure-room has to seed a chat without
+ * going through the chat-ai edge function. Kept intentionally short and
+ * casual so it reads like a real group-chat opener instead of an AI welcome.
+ */
 function getEventIcebreaker(eventTitle: string): string {
-  const lower = eventTitle.toLowerCase();
-  if (lower.includes("music") || lower.includes("concert") || lower.includes("dj"))
-    return `Welcome to the "${eventTitle}" room! 🎵 I'm here to help break the ice. What's a song that's been on repeat for you lately? Anyone been to a similar show before?`;
-  if (lower.includes("food") || lower.includes("brunch") || lower.includes("dinner") || lower.includes("taco"))
-    return `Hey foodies! Welcome to "${eventTitle}" 🍽️ What's your go-to comfort food? And does anyone have a favorite spot near the venue?`;
-  if (lower.includes("tech") || lower.includes("hack") || lower.includes("startup") || lower.includes("pitch"))
-    return `Welcome to "${eventTitle}"! 💻 What are you working on right now? Any cool side projects or ideas you're excited about?`;
-  if (lower.includes("fitness") || lower.includes("run") || lower.includes("yoga") || lower.includes("hike"))
-    return `Hey everyone! Welcome to "${eventTitle}" 💪 What's your fitness routine like? Anyone done an event like this before?`;
-  if (lower.includes("comedy") || lower.includes("standup") || lower.includes("improv"))
-    return `Welcome to "${eventTitle}"! 😂 Who's your favorite comedian right now? This is going to be a great time!`;
-  if (lower.includes("art") || lower.includes("gallery") || lower.includes("museum"))
-    return `Hey art lovers! Welcome to "${eventTitle}" 🎨 What kind of art are you into? Anyone been to this gallery before?`;
-  if (lower.includes("game") || lower.includes("gaming") || lower.includes("board"))
-    return `Welcome to "${eventTitle}"! 🎮 What games are you into right now? Let's get to know each other before we meet up!`;
-  if (lower.includes("salsa") || lower.includes("dance"))
-    return `Welcome to "${eventTitle}"! 💃 Who's ready to hit the dance floor? Any experienced dancers here or are we all beginners?`;
-  if (lower.includes("movie") || lower.includes("film") || lower.includes("cinema"))
-    return `Welcome to "${eventTitle}"! 🎬 What's the last movie that blew your mind? Let's get to know each other's taste!`;
-  return `Welcome to the "${eventTitle}" room! 🔥 I'm Rekindled AI — here to help you all connect before the event. What are you most excited about for this one?`;
+  return `new chat for "${eventTitle}" — say hi 👋`;
 }
 
 Deno.serve(async (req) => {
